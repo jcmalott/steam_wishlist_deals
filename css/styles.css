@@ -1,0 +1,40 @@
+.container {
+  margin-bottom: 10px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+}
+.better_price textarea {
+  background-color: green;
+}
+.title {
+  text-align: center;
+}
+.game-row {
+  display: flex;
+  align-items: center;
+}
+.gap {
+  gap: 5px;
+}
+#steam_id_row {
+  width: 50%;
+  margin-left: auto;
+}
+.label {
+  min-width: min(80px, 100%);
+  background-color: #252a36;
+  color: white;
+}
+.price {
+  min-width: min(100px, 100%);
+  font-weight: bold;
+  text-align: right;
+}
+.price_btn {
+  min-width: min(80px, 100%);
+  background-color: #171a21;
+  color: white;
+}
+.price_btn:hover {
+  background-color: #1b2838;
+}

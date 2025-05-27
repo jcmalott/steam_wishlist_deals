@@ -1,0 +1,9 @@
+.env
+
+__pycache__/
+.gradio
+
+data
+notebook
+
+notes.txt
