@@ -7,3 +7,5 @@ data
 notebook
 
 notes.txt
+
+*.ipynb
