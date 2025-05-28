@@ -88,7 +88,6 @@ class Steam(GameAPI):
         
         #  all wishlist steam games stored in locally file
         return super().get_data().get('games', [])
-        # return super().get_data()
      
     def check_user_status(self, steam_id: str) -> bool:  
         url = self.STEAM_SUPPORT_API_URL + "/ISteamUser/GetPlayerSummaries/v0002/"
@@ -133,32 +132,34 @@ class Steam(GameAPI):
             Returns:
                 Dict[str, Any]: Filtered game data
         """
-        filtered_data = {
-            "appid": game.get("steam_appid", 0),
-            "name": game.get("name",'NA'),
-            "header": game.get("header_image", 'NA'),
-            "is_free": game.get("is_free", 'NA'),
-            "description": game.get("detailed_description", 'NA'),
-            "developers": game.get("developers", []),
-            "publishers": game.get("publishers", []),
-            "categories": game.get("categories", []),
-            "genres": game.get("genres", [])     
-        }
+        filtered_data = {}
         
         price_overview = game.get("price_overview", {})
         if price_overview:
+            filtered_data = {
+                "appid": game.get("steam_appid", 0),
+                "name": game.get("name",'NA'),
+                "header": game.get("header_image", 'NA'),
+                "is_free": game.get("is_free", 'NA'),
+                "description": game.get("detailed_description", 'NA'),
+                "developers": game.get("developers", []),
+                "publishers": game.get("publishers", []),
+                "categories": game.get("categories", []),
+                "genres": game.get("genres", [])     
+            }
+            
             filtered_data["discount"] = price_overview.get("discount_percent", "NA")
             price = price_overview.get("final_formatted", "NA")
             currency = price_overview.get("currency", '')
             filtered_data = self._change_price_to_dollar(price, currency, filtered_data)
         
-        metacritic = game.get("metacritic", {})
-        if metacritic:
-            filtered_data["metacritic"] = metacritic.get("score", "NA")
-            
-        recommendations = game.get("recommendations", {})
-        if recommendations:
-            filtered_data["recommendations"] = recommendations.get("total", "NA")
+            metacritic = game.get("metacritic", {})
+            if metacritic:
+                filtered_data["metacritic"] = metacritic.get("score", "NA")
+                
+            recommendations = game.get("recommendations", {})
+            if recommendations:
+                filtered_data["recommendations"] = recommendations.get("total", "NA")
         
         return filtered_data
         

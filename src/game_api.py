@@ -8,7 +8,6 @@ import time
 import re
 
 from helper import save_to_json, check_if_recent_save, load_from_json
-from custom_retry import requests_with_retries
 from src.exchange_rates import ExchangeRates
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -60,7 +59,8 @@ class GameAPI():
             data = {'unique': stored_data['unique'], 'games': stored_data['games']}
         
         stored_games = data['games']
-        items_to_retrieve = self._items_left_to_download(stored_games, data['unique'])
+        store_uniques = data['unique']
+        items_to_retrieve = self._items_left_to_download(stored_games, store_uniques)
         
         if not items_to_retrieve:
             logger.info("All game data already retrieved, nothing to fetch")
@@ -80,11 +80,16 @@ class GameAPI():
                     
                     try:
                         # return any items found from search
-                        response = requests_with_retries(self.session, self.base_url_api, params=params, headers=headers)
+                        response = self.session.get(self.base_url_api, params=params)
                         response.raise_for_status()
                         
                         # function to process any data that was recieved
-                        stored_games.append(func_process(response.json(), id))
+                        # if Null don't store
+                        processed_json = func_process(response.json(), id)
+                        if processed_json:
+                            stored_games.append(processed_json)
+                            # remove matching id keeping track of what items have been downloaded
+                            store_uniques.remove(id)
                     except requests.RequestException as e:
                         logger.error(f"Failed to retrieve details for game {id}: {str(e)}")
                         if response.status_code == 429:
@@ -92,9 +97,9 @@ class GameAPI():
                         raise GameAPIError(f"Failed to retrieve game data: {str(e)}", response.status_code)
                     time.sleep(self.SLEEP_TIME)
                     pbar.update(1)
-                # add to games already fetched
+                # update and save data incase of disconnect
+                data['unique'] = store_uniques
                 data['games'] = stored_games
-                # save data incase of disconnect
                 save_to_json(self.save_file, data)
                 
                 # Pause between batches to avoid overwhelming the server

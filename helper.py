@@ -3,6 +3,7 @@ import datetime
 import logging
 import os
 import dateutil.parser
+from pathlib import Path
 import re
 from typing import Dict, List, Any
 
@@ -31,8 +32,9 @@ def save_to_json(filename, variable_data, check_recent = False):
         "data": variable_data
     }
     
+    file_path = Path(filename)
     # Write to JSON file
-    with open(filename, 'w') as json_file:
+    with open(file_path, 'w') as json_file:
         json.dump(data_to_save, json_file, indent=4)
     
     logger.info(f"Data saved to {filename}")
