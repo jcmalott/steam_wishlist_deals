@@ -31,7 +31,7 @@ class GGDealsAPI(GameAPI):
         self.api_key = api_key
         super().__init__(self.GG_DEALS_BASE_URL, data_dir)
         
-    def find_products_by_name(self, products, user_id):    
+    def find_products_by_appid(self, appids, user_id):    
         """
             Retrieve details for multiple game products in bulk.
             
@@ -46,17 +46,14 @@ class GGDealsAPI(GameAPI):
         }
         is_recent_save = check_if_recent_save(self.save_file, self.CACHE_DURATION)
         if not is_recent_save:
-            # If cache is outdated, extract unique game names from products list
-            uniques = [product["appid"] for product in products]
-            # uniques = products['unique']
             # Download fresh data for each unique game name
-            super().download_data(self._process_json, params, uniques)
+            super().download_data(self._process_json, params, appids)
         else:
             # files have a record of which games should be downloaded
             # this is checking to make sure all games are downloaded
             super().download_data(self._process_json, params)
             
-    def get_url(self):
+    def get_base_url(self):
         return self.GG_DEALS_BASE_URL
     
     def _process_json(self, response, game_id):
@@ -64,8 +61,8 @@ class GGDealsAPI(GameAPI):
             What to do with the game data returned by steam.
         """
         id = str(game_id)
-        if response['success'] and id in response['data']:
-            data = response['data'][str(game_id)]
+        if response['success'] and response['data'].get(id, None):
+            data = response['data'][id]
             return self._filter_game_data(data, id)
         
         else:
@@ -88,11 +85,11 @@ class GGDealsAPI(GameAPI):
         filtered_data = {}
         prices = game.get("prices", {})
         # check that price has a value
-        if "price_lowest" in prices and prices["price_lowest"]:
+        if "historicalRetail" in prices and prices["historicalRetail"]:
             filtered_data = {
-            "appid": int(id),
-            "name": game.get("title",'NA'),
-            "url": game.get("url", 'NA')   
+                "appid": int(id),
+                "name": game.get("title",'NA'),
+                "url": game.get("url", 'NA')   
             }
             filtered_data["price"] = float(prices.get("currentRetail", -1.00)) 
             filtered_data["price_lowest"] = float(prices.get("historicalRetail", -1.00) )

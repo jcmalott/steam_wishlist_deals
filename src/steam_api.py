@@ -9,7 +9,6 @@
 import requests
 import logging
 from typing import Dict, Any
-import re
 
 from helper import check_if_recent_save
 from src.game_api import GameAPI, GameAPIError
@@ -25,11 +24,12 @@ class Steam(GameAPI):
         Provides methods to fetch user wishlists and game details.
     """
     STEAM_API_URL = 'https://store.steampowered.com/api/appdetails' # Store API (Game Details)
+    STEAM_BASE_URL = 'https://store.steampowered.com/app/'
     STEAM_SUPPORT_API_URL='https://api.steampowered.com' # Service API (wishlist)
     WISHLIST_ENDPOINT = "IWishlistService/GetWishlist/v1" # Wishlist game Ids
     STEAM_FILENAME = 'steam_games'
     
-    def __init__(self, api_key: str, data_dir: str = 'data'):
+    def __init__(self, api_key:str, data_dir:str = 'data'):
         """
             Initialize connection with Steam client with an API key.
             
@@ -41,7 +41,7 @@ class Steam(GameAPI):
         self.wishlist_endpoint = f"{self.STEAM_SUPPORT_API_URL}/{self.WISHLIST_ENDPOINT}"
         super().__init__(self.STEAM_API_URL, data_dir)
         
-    def get_wishlist(self, user_id: str) -> Dict[str, Any]:
+    def get_wishlist(self, user_id: str, wishlist_only:bool=False) -> Dict[str, Any]:
         """
             Retrieve a user's wishlist from Steam and downloads all corresponding games.
             Caches data to avoid repeating API calls.
@@ -76,7 +76,7 @@ class Steam(GameAPI):
                     app_ids = [item['appid'] for item in wishlist_items] if wishlist_items else []
                 
                     # download all steam games on wishlist
-                    super().download_data(self._process_json, {'appids': ''}, app_ids)
+                    super().download_data(self._process_json, {'appids': ''}, app_ids, wishlist_only)
             except requests.RequestException as e:
                 logger.error(f"Failed to retrieve wishlist for user {user_id}: {str(e)}")
                 raise GameAPIError(f"Failed to retrieve wishlist: {str(e)}", response.status_code)
@@ -106,6 +106,12 @@ class Steam(GameAPI):
         except requests.RequestException as e:
             logger.error(f"Failed to retrieve user status for {steam_id}: {str(e)}")
             raise GameAPIError(f"Failed to retrieve user status: {str(e)}", response.status_code)
+        
+    def get_base_url(self):
+        """ 
+            Steam store API
+        """
+        return self.STEAM_BASE_URL
     
     def _process_json(self, response, game_id):
         """ 

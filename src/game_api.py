@@ -42,8 +42,7 @@ class GameAPI():
         self.data_dir = data_dir # folder to store local data
         Path(self.data_dir).mkdir(exist_ok=True) # Make dir if doesn't exist
             
-    def download_data(self, func_process, params, uniques: List[Any] = {}, 
-                      headers: Dict[str, Any] = {"Accept": "application/json"}):
+    def download_data(self, func_process, params, uniques: List[Any] = {}, wishlist_only:bool = False):
         """ 
             Data will be stored after each batch incase server disconnects.
             
@@ -53,6 +52,9 @@ class GameAPI():
         """
         if uniques: # each unique will be a primary key within games
             data = {'unique': uniques, 'games': []}
+            if wishlist_only:
+                save_to_json(self.save_file, data)
+                return 
         else: # only download data that hasn't been store yet
             logger.info(f"Loading Stored Data: {self.save_file}")
             stored_data = load_from_json(self.save_file)['data']
@@ -88,6 +90,7 @@ class GameAPI():
                         processed_json = func_process(response.json(), id)
                         if processed_json:
                             stored_games.append(processed_json)
+                        else:
                             # remove matching id keeping track of what items have been downloaded
                             store_uniques.remove(id)
                     except requests.RequestException as e:
