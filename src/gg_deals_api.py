@@ -46,11 +46,10 @@ class GGDealsAPI(GameAPI):
         }
         is_recent_save = check_if_recent_save(self.save_file, self.CACHE_DURATION)
         if not is_recent_save:
-            # Download fresh data for each unique game name
+            # Download fresh data for each game appid
             super().download_data(self._process_json, params, appids)
         else:
-            # files have a record of which games should be downloaded
-            # this is checking to make sure all games are downloaded
+            # check that all stored appids have been download correctly
             super().download_data(self._process_json, params)
             
     def get_base_url(self):
@@ -71,12 +70,11 @@ class GGDealsAPI(GameAPI):
         
     def _filter_game_data(self, game: Dict[str, Any], id:str) -> Dict[str, Any]:
         """
-            Extract relevant information from the game details.
-            
-            This filters the raw API response to just the fields we're interested in.
+            Extract relevant information from the game details if game has a set price.
             
             Args:
                 game (Dict[str, Any]): Raw game details from API
+                id: appid of game
                 
             Returns:
                 Dict[str, Any]: Filtered game data
@@ -84,15 +82,17 @@ class GGDealsAPI(GameAPI):
         
         filtered_data = {}
         prices = game.get("prices", {})
-        # check that price has a value
+        # check price has a value
         if "historicalRetail" in prices and prices["historicalRetail"]:
-            filtered_data = {
-                "appid": int(id),
-                "name": game.get("title",'NA'),
-                "url": game.get("url", 'NA')   
-            }
-            filtered_data["price"] = float(prices.get("currentRetail", -1.00)) 
-            filtered_data["price_lowest"] = float(prices.get("historicalRetail", -1.00) )
-            filtered_data["currency"] = prices.get("currency", "USD") 
+            price = prices.get("currentRetail", 0)
+            if price:
+                filtered_data = {
+                    "appid": int(id),
+                    "name": game.get("title",'NA'),
+                    "url": game.get("url", 'NA')   
+                }
+                filtered_data["price"] = float(price) 
+                filtered_data["price_lowest"] = float(prices.get("historicalRetail", 0.00) )
+                filtered_data["currency"] = prices.get("currency", "USD") 
         
         return filtered_data

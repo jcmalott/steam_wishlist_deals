@@ -10,7 +10,7 @@ import requests
 import logging
 from typing import Dict, Any
 
-from helper import check_if_recent_save
+from helper import check_if_recent_save, save_to_json
 from src.game_api import GameAPI, GameAPIError
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -38,10 +38,9 @@ class Steam(GameAPI):
                 data_dir (str): Directory to store cached data
         """
         self.api_key = api_key
-        self.wishlist_endpoint = f"{self.STEAM_SUPPORT_API_URL}/{self.WISHLIST_ENDPOINT}"
         super().__init__(self.STEAM_API_URL, data_dir)
         
-    def get_wishlist(self, user_id: str, wishlist_only:bool=False) -> Dict[str, Any]:
+    def load_wishlist(self, user_id: str, wishlist_only:bool=False):
         """
             Retrieve a user's wishlist from Steam and downloads all corresponding games.
             Caches data to avoid repeating API calls.
@@ -66,8 +65,9 @@ class Steam(GameAPI):
             }
             
             try:
+                wishlist_endpoint = f"{self.STEAM_SUPPORT_API_URL}/{self.WISHLIST_ENDPOINT}"
                 # get all game ids from users wishlist
-                response = requests.get(self.wishlist_endpoint, params=params)
+                response = requests.get(wishlist_endpoint, params=params)
                 response.raise_for_status()
                 data = response.json()
                 
@@ -75,19 +75,41 @@ class Steam(GameAPI):
                     wishlist_items = data["response"]["items"]
                     app_ids = [item['appid'] for item in wishlist_items] if wishlist_items else []
                 
-                    # download all steam games on wishlist
-                    super().download_data(self._process_json, {'appids': ''}, app_ids, wishlist_only)
+                    if wishlist_only:
+                        # only return game appids
+                        data = {'unique': app_ids, 'games': []}
+                        save_to_json(self.save_file, data)
+                    else:
+                        # retrieve all game information
+                        super().download_data(self._process_json, {'appids': ''}, app_ids)
             except requests.RequestException as e:
                 logger.error(f"Failed to retrieve wishlist for user {user_id}: {str(e)}")
                 raise GameAPIError(f"Failed to retrieve wishlist: {str(e)}", response.status_code)
         else:
-            params = { "appids": 0}
-            # files have a record of which games should be downloaded
-            # this is checking to make sure all games are downloaded
-            super().download_data(self._process_json, params)
+            # doesn't call server for new data, but checks that all previous data was downloaded
+            super().download_data(self._process_json, { "appids": 0})
+            
+    def get_game_data(self, appid:int):
+        params = {
+            'appids': appid,
+        }
         
-        #  all wishlist steam games stored in locally file
-        return super().get_data().get('games', [])
+        game_data = {}    
+        try:
+            response = requests.get(self.STEAM_API_URL, params=params)
+            response.raise_for_status()
+            data = response.json()
+            appid_key = str(appid)
+            # check that correct response was received
+            if appid_key in data and data[appid_key]['success']:
+                game_data = self._filter_game_data(data[appid_key]['data'])
+            else:
+                logger.warning(f"Failed to retrieve data for {appid}")
+        except requests.RequestException as e:
+            logger.error(f"Failed to retrieve data for {appid}: {str(e)}")
+            raise GameAPIError(f"Failed to retrieve wishlist: {str(e)}", response.status_code)
+        
+        return game_data
      
     def check_user_status(self, steam_id: str) -> bool:  
         url = self.STEAM_SUPPORT_API_URL + "/ISteamUser/GetPlayerSummaries/v0002/"
@@ -128,9 +150,7 @@ class Steam(GameAPI):
         
     def _filter_game_data(self, game: Dict[str, Any]) -> Dict[str, Any]:
         """
-            Extract relevant information from the game details.
-            
-            This filters the raw API response to just the fields we're interested in.
+            Extract relevant game information if game has a set price.
             
             Args:
                 game (Dict[str, Any]): Raw game details from API
@@ -140,6 +160,7 @@ class Steam(GameAPI):
         """
         filtered_data = {}
         
+        # only get data for a game that has a price
         price_overview = game.get("price_overview", {})
         if price_overview:
             filtered_data = {

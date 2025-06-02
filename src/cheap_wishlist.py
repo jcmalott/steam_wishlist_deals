@@ -50,14 +50,11 @@ class CheapWishlist():
             Returns:
                 dict: JSON steam games with matching gg deals products
         """
-        wishlist = self.steam.get_wishlist(steam_id, wishlist_only)
-        if len(wishlist) == 0:
-            return {}
-        
-        # get game products from locally stored location
-        # remove those without a price
+        # load steam data
+        self.steam.load_wishlist(steam_id, wishlist_only)
         self.stored_steam_data = self.steam.get_data()
         
+        # load gg_deals data
         self.gg_deals.find_products_by_appid(self.stored_steam_data['unique'], steam_id)
         self.stored_gg_deals_data = self.gg_deals.get_data()
     
@@ -87,18 +84,16 @@ class CheapWishlist():
         """
         return self.steam.check_user_status(steam_id)
     
-    # TODO: Update so that only steam will show if no other site is passed   
     def _get_matched_games(self, sort_from_lowest:bool=True) -> List[Dict[str, Dict[str, Any]]]:
         """
-            Match Steam games with their Kinguin counterparts.
-            The lowest price between the two games is also stored to be able to sort games by lowest price.
+            Match GG Deals with their Steam counterparts.
+            The lowest price between the two games is stored and can be sorted by lowest price.
             
             Returns:
-                List of dictionaries containing matched Steam and Kinguin game data
+                List of dictionaries containing matched Steam and GG Deals game data
         """
         matched_games = []
         steam_games = self.stored_steam_data['games']
-        steam_uniques = self.stored_steam_data['unique']
         gg_deals_games = self.stored_gg_deals_data['games']
         
         if gg_deals_games is None:
@@ -118,10 +113,13 @@ class CheapWishlist():
             else:
                 # find steam game with matching appid
                 appid = gg_deals_game['appid']
-                steam_index = steam_uniques.index(appid)
-                
-                # get price of game from both sites
-                steam_game = steam_games[steam_index]
+                steam_game = next((game for game in steam_games if game['appid'] == appid), {})
+                if not steam_game:
+                    continue
+                # TODO: DELETE IF CORRECT PRICE IS WORKING
+                # steam_index = steam_uniques.index(appid)
+                # # get price of game from both sites
+                # steam_game = steam_games[steam_index]
                 steam_price = steam_game.get('price')
                 
                 # if both don't have a price skip to next game

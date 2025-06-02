@@ -9,22 +9,11 @@ import re
 
 from helper import save_to_json, check_if_recent_save, load_from_json
 from src.exchange_rates import ExchangeRates
+from src.custom_errors import GameAPIError
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
-
-class GameAPIError(Exception):
-    """Custom exception for Steam API related errors.
-    
-        Attributes:
-            message (str): Error message
-            status_code (int, optional): HTTP status code if available
-    """
-    def __init__(self, message: str, status_code: Optional[int] = None):
-        self.message = message
-        self.status_code = status_code
-        super().__init__(self.message)
         
 class GameAPI():
     BATCH_SIZE = 20 # items, How many resquests to make in one iteration
@@ -42,19 +31,21 @@ class GameAPI():
         self.data_dir = data_dir # folder to store local data
         Path(self.data_dir).mkdir(exist_ok=True) # Make dir if doesn't exist
             
-    def download_data(self, func_process, params, uniques: List[Any] = {}, wishlist_only:bool = False):
+    def download_data(self, func_process, params, uniques: List[Any] = {}):
         """ 
             Data will be stored after each batch incase server disconnects.
             
-            params {
-                "first_key": <- what is being searched for
-            }
+            Args:
+                func_process: Function that processes any data returned from base_url_api
+                uniques: appids
+                params: What to send when calling base_url_api to retrieve correct game data
+            Note:
+                params {
+                    "first_key": <- what is being searched for
+                }
         """
         if uniques: # each unique will be a primary key within games
             data = {'unique': uniques, 'games': []}
-            if wishlist_only:
-                save_to_json(self.save_file, data)
-                return 
         else: # only download data that hasn't been store yet
             logger.info(f"Loading Stored Data: {self.save_file}")
             stored_data = load_from_json(self.save_file)['data']
