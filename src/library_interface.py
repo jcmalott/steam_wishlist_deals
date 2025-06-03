@@ -31,6 +31,7 @@ class LibraryInterface():
     UNDER_TEN = True # only display games where lowest price is under $10
     STEAM_DIR = 'data'
     FILENAME = 'gg_deals_library'
+    USER_ID = '76561198041511379'
     
     def __init__(self, library: List[Dict[str,Any]], gg_deals_api_key:str, steam_id:int=None):
         """
@@ -73,29 +74,11 @@ class LibraryInterface():
             def update_games_container(id):
                 progress=gr.Progress(track_tqdm=True)
                 progress(0, desc="Starting")
-        
-                # only select games that have been played
-                filtered_library = [entry for entry in self.library if entry['playtime_minutes'] != 0]
-                appids = [item['appid'] for item in filtered_library]
                 
-                self.gg_deals.find_products_by_appid(appids, '76561198041511379')
-                data = self.gg_deals.get_data()
-                
-                games = data['games']
-                # only select games that have been paid for
-                games_with_price = [item for item in games if item['price'] > 0]
-                sort_games = sorted(games_with_price, key=lambda x: x['price'], reverse=False)
-                
-                library_lookup = {item['appid']: item['playtime_minutes'] for item in filtered_library}
-                for game in sort_games:
-                    appid = game['appid']
-                    if appid in library_lookup:
-                        game['playtime'] = library_lookup[appid]
-                
-                self.library_games = sort_games
+                self.library_games = self._fetch_data()
                 
                 # allow user to select a game from dropdown
-                names = ['All Games'] + [game['name'] for game in sort_games]
+                names = ['All Games'] + [game['name'] for game in self.library_games]
                 search_input = gr.Dropdown(choices=names, container=False)
                 
                 # create layout to display a select game
@@ -114,7 +97,33 @@ class LibraryInterface():
         return ui  
     
     def _fetch_data(self) -> str:
-        pass
+        """ 
+            Get games from user library that have been played and paid for.
+            
+            Return: List[Dict[str, Any]], best deals for games that have beed played and paid for.
+        """
+        # only select games that have been played
+        filtered_library = [entry for entry in self.library if entry['playtime_minutes'] != 0]
+        appids = [item['appid'] for item in filtered_library]
+        
+        # find deals for above items
+        self.gg_deals.find_products_by_appid(appids, self.USER_ID)
+        data = self.gg_deals.get_data()
+        
+        games = data['games']
+        # only select games that have been paid for
+        games_with_price = [item for item in games if item['price'] > 0]
+        sort_games = sorted(games_with_price, key=lambda x: x['price'], reverse=False)
+        
+        # add playtime to game data
+        library_lookup = {item['appid']: {'mins': item['playtime_minutes'], "img": item['header_image']} for item in filtered_library}
+        for game in sort_games:
+            appid = game['appid']
+            if appid in library_lookup:
+                game['playtime'] = library_lookup[appid]['mins']
+                game['header_image'] = library_lookup[appid]['img']
+                
+        return sort_games
                 
     def _update_multi_display(self):
         """ 
@@ -138,8 +147,9 @@ class LibraryInterface():
                 gg_deals_link = game.get('url',"")
                 gg_deals_price = game.get('price', 0)
                 gg_deals_historic_price = game.get('price_lowest', 0)
+                gg_img = game.get('header_image', default_image)
                 
-                return gr.update(visible=True), gr.update(visible=False), game['name'], gr.update(value=f"${gg_deals_price:.2f}", elem_classes=gg_deals_class), gr.update(f"${gg_deals_historic_price:.2f}", elem_classes=gg_deals_class), gg_deals_link, default_image
+                return gr.update(visible=True), gr.update(visible=False), game['name'], gr.update(value=f"${gg_deals_price:.2f}", elem_classes=gg_deals_class), gr.update(f"${gg_deals_historic_price:.2f}", elem_classes=gg_deals_class), gg_deals_link, gg_img
         
     def _display_games(self):
         games_to_iterate = self.library_games
@@ -174,10 +184,11 @@ class LibraryInterface():
         gg_deals_link = gg_deals_game.get('url',"")
         gg_deals_price = gg_deals_game.get('price', 0)
         gg_deals_historic_price = gg_deals_game.get('price_lowest', 0)
+        gg_img = gg_deals_game.get('header_image', default_image)
 
         with gr.Row(elem_classes='container game-row'):
             with gr.Column(scale=1):
-                imagebox = gr.Image(default_image, container=False, show_download_button=False, show_fullscreen_button=False)
+                imagebox = gr.Image(gg_img, container=False, show_download_button=False, show_fullscreen_button=False)
             with gr.Column(scale=4):
                 namebox = gr.Textbox(gg_deals_game.get('name', ""), show_label=False, container=False)
             with gr.Column(scale=1):

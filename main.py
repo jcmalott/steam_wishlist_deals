@@ -35,6 +35,10 @@ def main():
     
         db = SteamDatabase('steam', 'postgres', DATABASE_PASSWORD)
         library = db.get_library(STEAM_ID)
+        for game in library:
+            game_data = db.get_game(game['appid'])
+            game['header_image'] = game_data.get('header_image','')
+            
         ui = LibraryInterface(library, GG_DEALS_KEY_API, STEAM_ID)
         ui.launch(True)
     

@@ -93,7 +93,6 @@ class WishlistInterface():
                     self._display_games()
                 
                 # display the game selected from dropdown to single game layout
-                # search_input.change(self._display_single_game, inputs=[search_input], outputs=[single_game_container, all_games_container, *boxes])
                 search_input.change(self._display_single_game, inputs=[search_input], outputs=[single_game_container, all_games_container, *boxes])
                 # controls displaying multiple games to interface
                 steam_id_box.submit(self._update_multi_display, inputs=[], outputs=[single_game_container, all_games_container])
@@ -130,9 +129,7 @@ class WishlistInterface():
         if term == "All Games":
             return gr.update(visible=False), gr.update(visible=True), '', gr.update(visible=False), '', gr.update(visible=False), gr.update(visible=False), '', Image.new('RGB', (150, 200), color=(200, 200, 200))
         for game in self.matched_games:
-            # return gr.update(visible=False), gr.update(visible=True), self._create_game_row(game['steam'], game['ggdeals'])
             if game['game_name'].lower() == term.lower():
-                # return self._create_game_row(game['steam'], game['ggdeals'])
     
                 gg_deals = game['ggdeals']
                 gg_deals_class = 'better_price'
@@ -150,7 +147,7 @@ class WishlistInterface():
                         steam_class = 'better_price'
             
                 img = game['steam'].get("header", "")
-                    
+    
                 return gr.update(visible=True), gr.update(visible=False), game['game_name'], gr.update(value=f"${steam_price:.2f}", elem_classes=steam_class), steam_link, gr.update(value=f"${gg_deals_price:.2f}", elem_classes=gg_deals_class), gr.update(f"${gg_deals_historic_price:.2f}", elem_classes=gg_deals_class), gg_deals_link, img
         
     def _display_games(self):
