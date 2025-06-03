@@ -32,6 +32,7 @@ class LibraryInterface():
     STEAM_DIR = 'data'
     FILENAME = 'gg_deals_library'
     USER_ID = '76561198041511379'
+    TOTAL_PLAY_TIME = 30 # how long game needs to be played to show up on list
     
     def __init__(self, library: List[Dict[str,Any]], gg_deals_api_key:str, steam_id:int=None):
         """
@@ -103,7 +104,7 @@ class LibraryInterface():
             Return: List[Dict[str, Any]], best deals for games that have beed played and paid for.
         """
         # only select games that have been played
-        filtered_library = [entry for entry in self.library if entry['playtime_minutes'] != 0]
+        filtered_library = [entry for entry in self.library if entry['playtime_minutes'] >= self.TOTAL_PLAY_TIME]
         appids = [item['appid'] for item in filtered_library]
         
         # find deals for above items
@@ -213,7 +214,6 @@ class LibraryInterface():
             Args:
                 url: URL to open
         """
-        print(f"URL: {url}")
         webbrowser.open(url)
     
     def _load_css(self):
