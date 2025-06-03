@@ -76,7 +76,6 @@ class LibraryInterface():
         
                 # only select games that have been played
                 filtered_library = [entry for entry in self.library if entry['playtime_minutes'] != 0]
-                # sorted_library = sorted(filtered_library, key=lambda x: x['playtime_minutes'], reverse=True)
                 appids = [item['appid'] for item in filtered_library]
                 
                 self.gg_deals.find_products_by_appid(appids, '76561198041511379')
@@ -108,7 +107,6 @@ class LibraryInterface():
                     self._display_games()
                 
                 # display the game selected from dropdown to single game layout
-                # search_input.change(self._display_single_game, inputs=[search_input], outputs=[single_game_container, all_games_container, *boxes])
                 search_input.change(self._display_single_game, inputs=[search_input], outputs=[single_game_container, all_games_container, *boxes])
                 # controls displaying multiple games to interface
                 steam_id_box.submit(self._update_multi_display, inputs=[], outputs=[single_game_container, all_games_container])
@@ -130,31 +128,18 @@ class LibraryInterface():
             Turns on the single game display.
             Turns off the multiple game display.
         """
+        default_image = Image.new('RGB', (150, 200), color=(200, 200, 200))
         if term == "All Games":
-            return gr.update(visible=False), gr.update(visible=True), '', gr.update(visible=False), '', gr.update(visible=False), gr.update(visible=False), '', Image.new('RGB', (150, 200), color=(200, 200, 200))
-        for game in self.matched_games:
-            # return gr.update(visible=False), gr.update(visible=True), self._create_game_row(game['steam'], game['ggdeals'])
-            if game['game_name'].lower() == term.lower():
-                # return self._create_game_row(game['steam'], game['ggdeals'])
+            return gr.update(visible=False), gr.update(visible=True), '', gr.update(visible=False), gr.update(visible=False), '', default_image
+        for game in self.library_games:
+            if game['name'].lower() == term.lower():
     
-                gg_deals = game['ggdeals']
                 gg_deals_class = 'better_price'
-                gg_deals_link = gg_deals.get('url',"")
-                gg_deals_price = gg_deals.get('price', 0)
-                gg_deals_historic_price = gg_deals.get('price_lowest', 0)
+                gg_deals_link = game.get('url',"")
+                gg_deals_price = game.get('price', 0)
+                gg_deals_historic_price = game.get('price_lowest', 0)
                 
-                # figure out if steam or gg deals has the better price
-                steam_class = 'price'
-                if game['steam']:
-                    steam_link = self._create_site_url(self.steam_base_url, game['steam'], '-')
-                    steam_price = game['steam'].get('price', 0)
-                    if gg_deals_price < 0 and gg_deals_price > steam_price:
-                        gg_deals_class = 'price'
-                        steam_class = 'better_price'
-            
-                img = game['steam'].get("header", "")
-                    
-                return gr.update(visible=True), gr.update(visible=False), game['game_name'], gr.update(value=f"${gg_deals_price:.2f}", elem_classes=gg_deals_class), gr.update(f"${gg_deals_historic_price:.2f}", elem_classes=gg_deals_class), gg_deals_link, img
+                return gr.update(visible=True), gr.update(visible=False), game['name'], gr.update(value=f"${gg_deals_price:.2f}", elem_classes=gg_deals_class), gr.update(f"${gg_deals_historic_price:.2f}", elem_classes=gg_deals_class), gg_deals_link, default_image
         
     def _display_games(self):
         games_to_iterate = self.library_games
@@ -174,26 +159,6 @@ class LibraryInterface():
                     pbar.update(1)
         
         return game_rows
-        
-    def _create_site_url(self, base_url: str, game: Dict[str, Any], replacer: str = '_') -> str:
-        """
-            Create a URL for the game on a given platform.
-            
-            Args:
-                base_url: The base URL for the platform
-                game: Game data dictionary
-                replacer: Character to replace spaces in game name
-                
-            Returns:
-                Complete URL for the game
-        """
-        if 'appid' in game:
-            id = game['appid']
-            name = game['name'].lower().replace(" ", replacer)
-            name = re.sub(":",'', name)
-            return f'{base_url}{id}/{name}'
-        else:
-            return base_url
     
     def _create_game_row(self, gg_deals_game: Dict[str, Any]) -> None:
         """
