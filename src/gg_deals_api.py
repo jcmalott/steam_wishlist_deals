@@ -18,9 +18,8 @@ class GGDealsAPI(GameAPI):
         Provides methods to fetch game product details.
     """
     GG_DEALS_BASE_URL = 'http://api.gg.deals/v1/prices/by-steam-app-id/'
-    GG_DEALS_FILENAME = 'gg_deals_games'
     
-    def __init__(self, api_key:str, data_dir:str = 'data'):
+    def __init__(self, api_key:str, filename:str='gg_deals_games', data_dir:str = 'data'):
         """
             Initialize connection with GG Deals client with an API key.
             
@@ -29,6 +28,7 @@ class GGDealsAPI(GameAPI):
                 data_dir (str): Directory to store cached data
         """
         self.api_key = api_key
+        self.filename = filename
         super().__init__(self.GG_DEALS_BASE_URL, data_dir)
         
     def find_products_by_appid(self, appids, user_id):    
@@ -39,7 +39,7 @@ class GGDealsAPI(GameAPI):
                 products (list): List of product dictionaries containing game names to search for
         """    
         logger.info("Retrieving mulitple game product details")
-        super().set_file_name(self.GG_DEALS_FILENAME + "-" + user_id + ".json")
+        super().set_file_name(self.filename + "-" + user_id + ".json")
         params = {
             'ids': 0,
             'key': self.api_key

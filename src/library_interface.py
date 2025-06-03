@@ -13,25 +13,26 @@ import webbrowser
 from PIL import Image 
 from itertools import takewhile
 
-from src.cheap_wishlist import CheapWishlist
+from src.gg_deals_api import GGDealsAPI
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 # stop httpx logs from always showing
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-class WishlistInterface():
+class LibraryInterface():
     """
         A class that creates a Gradio interface to display and compare
         Steam wishlist prices with GG Deals sites.
     """
     # Where user can find their account id
-    ACCOUNT_ID_LOCATION = "https://store.steampowered.com/account/"
     BATCH_SIZE = 30 # number of game rows to display
     WISHLIST_ONLY = False # only download wishlist appids
     UNDER_TEN = True # only display games where lowest price is under $10
+    STEAM_DIR = 'data'
+    FILENAME = 'gg_deals_library'
     
-    def __init__(self, cheap_wishlist:CheapWishlist):
+    def __init__(self, library: List[Dict[str,Any]], gg_deals_api_key:str, steam_id:int=None):
         """
             Initialize the WishlistInterface with game data.
             
@@ -39,9 +40,9 @@ class WishlistInterface():
                 steam_games: List of game data from Steam
                 kinguin_games: List of game data from Kinguin
         """
-        self.cheap_wishlist = cheap_wishlist
-        self.steam_base_url = self.cheap_wishlist.get_steam_url()
-        self.gg_deals_base_url = self.cheap_wishlist.get_gg_base_url()
+        self.library = library
+        self.steam_id = steam_id
+        self.gg_deals = GGDealsAPI(gg_deals_api_key, self.FILENAME, self.STEAM_DIR + "\ggdeals")
         self.ui = self._build_ui()
         
     def launch(self, inbrowser: bool = True) -> None:
@@ -61,12 +62,11 @@ class WishlistInterface():
                 Gradio Blocks interface
         """
         with gr.Blocks(theme='soft', css=self._load_css()) as ui:
-            gr.Markdown("# Steam Wishlist Prices", elem_classes='title')
+            gr.Markdown("# Best Games Prices", elem_classes='title')
             with gr.Row(elem_id='steam_id_row'):
                 gr.Button('Steam User ID', elem_classes='label', interactive=False)
                 with gr.Column():
-                    steam_id_box = gr.Textbox(container=False, value=f"{self.cheap_wishlist.get_default_id()}", interactive=True)
-                    gr.Markdown(self.ACCOUNT_ID_LOCATION, elem_id="info-text") 
+                    steam_id_box = gr.Textbox(container=False, value=f"{self.steam_id}", interactive=True)
             
             # when given a correct steam id display create wishlist interface
             @gr.render(inputs=[steam_id_box], triggers=[steam_id_box.submit])
@@ -74,19 +74,34 @@ class WishlistInterface():
                 progress=gr.Progress(track_tqdm=True)
                 progress(0, desc="Starting")
         
-                # Get steam and gg deals data
-                check_for_error = self._fetch_data(id)
-                if check_for_error != '':
-                    gr.Markdown(check_for_error)
-                    return None
-                  
+                # only select games that have been played
+                filtered_library = [entry for entry in self.library if entry['playtime_minutes'] != 0]
+                # sorted_library = sorted(filtered_library, key=lambda x: x['playtime_minutes'], reverse=True)
+                appids = [item['appid'] for item in filtered_library]
+                
+                self.gg_deals.find_products_by_appid(appids, '76561198041511379')
+                data = self.gg_deals.get_data()
+                
+                games = data['games']
+                # only select games that have been paid for
+                games_with_price = [item for item in games if item['price'] > 0]
+                sort_games = sorted(games_with_price, key=lambda x: x['price'], reverse=False)
+                
+                library_lookup = {item['appid']: item['playtime_minutes'] for item in filtered_library}
+                for game in sort_games:
+                    appid = game['appid']
+                    if appid in library_lookup:
+                        game['playtime'] = library_lookup[appid]
+                
+                self.library_games = sort_games
+                
                 # allow user to select a game from dropdown
-                names = ['All Games'] + self.game_names
+                names = ['All Games'] + [game['name'] for game in sort_games]
                 search_input = gr.Dropdown(choices=names, container=False)
                 
                 # create layout to display a select game
                 with gr.Column(visible=False) as single_game_container:
-                    boxes = self._create_game_row({},{})
+                    boxes = self._create_game_row({})
                 
                 # create layout to display multiple games
                 with gr.Column(visible=True) as all_games_container:
@@ -100,20 +115,8 @@ class WishlistInterface():
                                 
         return ui  
     
-    def _fetch_data(self, id) -> str:
-        message_to_user = ""
-        if not re.match(r"^\d+$",id):
-            message_to_user += f"User Id: {id} must only contain numbers!"
-        # TODO add check user id back in
-        # elif not self.cheap_wishlist.check_user_status(id):
-        #     message_to_user += f"User Id: {id} doesn't exist!"
-        else:
-            self.matched_games = self.cheap_wishlist.initialize_data(str(id), self.WISHLIST_ONLY) 
-            self.game_names = [game['game_name'] for game in self.matched_games]
-            if len(self.matched_games) < 0:
-                message_to_user += f"User Id: {id} has no wishlist!"
-        
-        return message_to_user
+    def _fetch_data(self) -> str:
+        pass
                 
     def _update_multi_display(self):
         """ 
@@ -151,12 +154,12 @@ class WishlistInterface():
             
                 img = game['steam'].get("header", "")
                     
-                return gr.update(visible=True), gr.update(visible=False), game['game_name'], gr.update(value=f"${steam_price:.2f}", elem_classes=steam_class), steam_link, gr.update(value=f"${gg_deals_price:.2f}", elem_classes=gg_deals_class), gr.update(f"${gg_deals_historic_price:.2f}", elem_classes=gg_deals_class), gg_deals_link, img
+                return gr.update(visible=True), gr.update(visible=False), game['game_name'], gr.update(value=f"${gg_deals_price:.2f}", elem_classes=gg_deals_class), gr.update(f"${gg_deals_historic_price:.2f}", elem_classes=gg_deals_class), gg_deals_link, img
         
     def _display_games(self):
-        games_to_iterate = self.matched_games
+        games_to_iterate = self.library_games
         if self.UNDER_TEN:
-            games_to_iterate = list(takewhile(lambda game: game['lowest_price'] <= 10, self.matched_games))
+            games_to_iterate = list(takewhile(lambda game: game['price'] <= 10, self.library_games))
         iterations = len(games_to_iterate)
         if iterations == 0:
             return gr.Markdown(f"No games have been found in your wishlist!")
@@ -166,7 +169,7 @@ class WishlistInterface():
             for i in range(0, iterations, self.BATCH_SIZE):
                 batch = games_to_iterate[i:i+self.BATCH_SIZE]
                 for game in batch:
-                    game_row = self._create_game_row(game['steam'], game['ggdeals'])
+                    game_row = self._create_game_row(game)
                     game_rows.append(game_row)
                     pbar.update(1)
         
@@ -192,7 +195,7 @@ class WishlistInterface():
         else:
             return base_url
     
-    def _create_game_row(self, steam_game: Dict[str, Any], gg_deals_game: Dict[str, Any]) -> None:
+    def _create_game_row(self, gg_deals_game: Dict[str, Any]) -> None:
         """
             Create a UI row for displaying a game with price comparison.
             
@@ -206,26 +209,13 @@ class WishlistInterface():
         gg_deals_link = gg_deals_game.get('url',"")
         gg_deals_price = gg_deals_game.get('price', 0)
         gg_deals_historic_price = gg_deals_game.get('price_lowest', 0)
-        
-        # figure out if steam or gg deals has the better price
-        steam_class = 'price'
-        steam_link = self._create_site_url(self.steam_base_url , steam_game, '_') if steam_game else ''
-        steam_price = steam_game.get('price', 0)
-        if gg_deals_price < 0 and gg_deals_price > steam_price:
-                gg_deals_class = 'price'
-                steam_class = 'better_price'
-        
 
         with gr.Row(elem_classes='container game-row'):
             with gr.Column(scale=1):
-                imagebox = gr.Image(steam_game.get("header", default_image), container=False, show_download_button=False, show_fullscreen_button=False)
+                imagebox = gr.Image(default_image, container=False, show_download_button=False, show_fullscreen_button=False)
             with gr.Column(scale=4):
-                namebox = gr.Textbox(steam_game.get('name', ""), show_label=False, container=False)
+                namebox = gr.Textbox(gg_deals_game.get('name', ""), show_label=False, container=False)
             with gr.Column(scale=1):
-                with gr.Row(elem_classes='gap'):
-                    steam_price_box = gr.Textbox(f"${steam_price:.2f}", show_label=False, container=False, scale=2, elem_classes=steam_class)
-                    steam_url = gr.Textbox(steam_link, visible=False)
-                    steam_btn = gr.Button('Steam', scale=1,elem_classes='price_btn')
                 with gr.Row(elem_classes='gap'):
                     gg_price_display = f"${gg_deals_price:.2f}" if gg_deals_price > 0 else "N/A"
                     gg_deals_price_box = gr.Textbox(f"{gg_price_display}", show_label=False, container=False, scale=2, elem_classes=gg_deals_class)
@@ -236,11 +226,8 @@ class WishlistInterface():
                     lowest_btn = gr.Button('Lowest', scale=1, elem_classes='price_btn', interactive=False)
                     historic_price_box = gr.Textbox(f"{price_display}", show_label=False, container=False, scale=2)
         
-        
-        steam_btn.click(fn=self._open_url, inputs=[steam_url])
         gg_deals_btn.click(fn=self._open_url, inputs=[gg_deals_url])
-        
-        return namebox, steam_price_box, steam_url, gg_deals_price_box, historic_price_box, gg_deals_url, imagebox  
+        return namebox, gg_deals_price_box, historic_price_box, gg_deals_url, imagebox  
         
     @staticmethod
     def _open_url(url: str) -> None:
@@ -250,6 +237,7 @@ class WishlistInterface():
             Args:
                 url: URL to open
         """
+        print(f"URL: {url}")
         webbrowser.open(url)
     
     def _load_css(self):
