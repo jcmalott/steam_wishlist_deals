@@ -32,14 +32,18 @@ def main():
         DATABASE_PASSWORD = os.getenv('DATABASE_PASSWORD')
         if not DATABASE_PASSWORD:
             raise ValueError("Database password not set")
-    
+        
+        ANY_DEAL_KEY_API = os.getenv('ANY_DEAL_API_KEY')
+        if not ANY_DEAL_KEY_API:
+            raise ValueError("Any Deal API key must be set in environment variables")
+        
         db = SteamDatabase('steam', 'postgres', DATABASE_PASSWORD)
         library = db.get_library(STEAM_ID)
         for game in library:
             game_data = db.get_game(game['appid'])
             game['header_image'] = game_data.get('header_image','')
             
-        ui = LibraryInterface(library, GG_DEALS_KEY_API, STEAM_ID)
+        ui = LibraryInterface(library, GG_DEALS_KEY_API, ANY_DEAL_KEY_API, STEAM_ID)
         ui.launch(True)
     
 if __name__ == '__main__':

@@ -31,7 +31,7 @@ class GGDealsAPI(GameAPI):
         self.filename = filename
         super().__init__(self.GG_DEALS_BASE_URL, data_dir)
         
-    def find_products_by_appid(self, appids, user_id):    
+    def find_products_by_appid(self, appids, user_id:str):    
         """
             Retrieve details for multiple game products in bulk.
             
@@ -80,19 +80,27 @@ class GGDealsAPI(GameAPI):
                 Dict[str, Any]: Filtered game data
         """
         
-        filtered_data = {}
         prices = game.get("prices", {})
-        # check price has a value
-        if "historicalRetail" in prices and prices["historicalRetail"]:
-            price = prices.get("currentRetail", 0)
-            if price:
-                filtered_data = {
-                    "appid": int(id),
-                    "name": game.get("title",'NA'),
-                    "url": game.get("url", 'NA')   
-                }
-                filtered_data["price"] = float(price) 
-                filtered_data["price_lowest"] = float(prices.get("historicalRetail", 0.00) )
-                filtered_data["currency"] = prices.get("currency", "USD") 
+        if not prices:
+            return {}
         
-        return filtered_data
+        # Remove any game that is free
+        retail_price = self._safe_float(prices.get("currentRetail"))
+        if not retail_price:
+            return {}
+        
+        return {
+            "appid": int(id),
+            "name": game.get("title", "NA"),
+            "url": game.get("url", "NA"),
+            "gg_deals": {
+                "retail_price": retail_price,
+                "retail_price_low": self._safe_float(prices.get("historicalRetail")),
+                "keyshop_price": self._safe_float(prices.get("currentKeyshops")),
+                "keyshop_price_low": self._safe_float(prices.get("historicalKeyshops")),
+            },
+            "currency": prices.get("currency", "USD")
+        }
+        
+    def _safe_float(self, value):
+        return float(value) if value else 0.00

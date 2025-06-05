@@ -11,7 +11,6 @@ from typing import Dict, List, Any
 import re
 import webbrowser
 from PIL import Image 
-from itertools import takewhile
 
 from src.cheap_wishlist import CheapWishlist
 
@@ -153,7 +152,7 @@ class WishlistInterface():
     def _display_games(self):
         games_to_iterate = self.matched_games
         if self.UNDER_TEN:
-            games_to_iterate = list(takewhile(lambda game: game['lowest_price'] <= 10, self.matched_games))
+            games_to_iterate = list(filter(lambda game: game['lowest_price'] <= 10, self.matched_games))
         iterations = len(games_to_iterate)
         if iterations == 0:
             return gr.Markdown(f"No games have been found in your wishlist!")

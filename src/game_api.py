@@ -129,6 +129,12 @@ class GameAPI():
         
         return data
     
+    def change_price_to_dollar(self, og_price, currency):
+        if currency == '':
+            return og_price
+        
+        return self.rates.get_price_dollar(og_price, currency)
+    
     def _items_left_to_download(self, stored_games, stored_uniques):
         """ 
             Comparing uniques with game primary keys
