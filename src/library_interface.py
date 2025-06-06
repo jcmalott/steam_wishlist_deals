@@ -1,64 +1,92 @@
 
 """
+EDITED
+
 WishlistInterface - A Gradio UI for comparing Steam wishlist prices with GG Deals site.
+
+TODO:
+    Add caching for API responses
+    Implement async API calls for better performance
+    Add user preferences (sort order, filters, etc.)
+    Add export functionality for price comparisons
+    Consider adding unit tests
 """
 import logging
-from dotenv import load_dotenv
 import os
 import gradio as gr
 from tqdm import tqdm
-from typing import Dict, List, Any
-import re
+from typing import Dict, List, Any, Optional, Tuple
 import webbrowser
 from PIL import Image 
-
-import json
+import threading
+from dataclasses import dataclass, field
+from concurrent.futures import ThreadPoolExecutor
 
 from src.gg_deals_api import GGDealsAPI
 from src.any_deal_api import AnyDealAPI
+from src.price_comparison_config import PriceComparisonConfig
+from src.data_class import GameData
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-# stop httpx logs from always showing
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-class LibraryInterface():
+# TODO: Try to use dataclass
+class LibraryInterface:
     """
-        A class that creates a Gradio interface to display and compare
-        Steam wishlist prices with GG Deals sites.
+    A class that creates a Gradio interface to display and compare
+    Steam library prices with deal aggregation sites.
     """
-    # Where user can find their account id
-    BATCH_SIZE = 30 # number of game rows to display
-    WISHLIST_ONLY = False # only download wishlist appids
-    UNDER_TEN = True # only display games where lowest price is under $10
-    STEAM_DIR = 'data'
-    FILENAME_GG = 'gg_deals_library'
-    FILENAME_ANY = 'real_deal_library'
-    USER_ID = '76561198041511379'
-    TOTAL_PLAY_TIME = 30 # how long game needs to be played to show up on list
     
-    def __init__(self, library: List[Dict[str,Any]], gg_deals_api_key:str, any_deal_api_key:str, steam_id:int=None):
+    def __init__(self, 
+                 library: List[Dict[str, Any]], 
+                 gg_deals_api_key: str, 
+                 any_deal_api_key: str, 
+                 steam_id: Optional[int] = None,
+                 config: Optional[PriceComparisonConfig] = None):
         """
-            Initialize the WishlistInterface with game data.
-            
-            Args:
-                steam_games: List of game data from Steam
-                kinguin_games: List of game data from Kinguin
+        Initialize the LibraryInterface with game data and API keys.
+        
+        Args:
+            library: List of game data from Steam library
+            gg_deals_api_key: API key for GG Deals
+            any_deal_api_key: API key for Any Deal
+            steam_id: Steam user ID
+            config: Configuration object
         """
         self.library = library
         self.steam_id = steam_id
-        self.gg_deals = GGDealsAPI(gg_deals_api_key, self.FILENAME_GG, self.STEAM_DIR + "\ggdeals")
-        self.any_deal = AnyDealAPI(any_deal_api_key, self.FILENAME_ANY, self.STEAM_DIR + "\\anydeal")
+        self.config = config or PriceComparisonConfig()
+        self.library_games: List[GameData] = []
+        self._lock = threading.Lock()
+        
+        # Initialize API clients
+        self.gg_deals = GGDealsAPI(
+            gg_deals_api_key, 
+            self.config.gg_deals_filename, 
+            os.path.join(self.config.steam_data_dir, "ggdeals")
+        )
+        self.any_deal = AnyDealAPI(
+            any_deal_api_key, 
+            self.config.any_deal_filename, 
+            os.path.join(self.config.steam_data_dir, "anydeal")
+        )
+        
         self.ui = self._build_ui()
         
-    def launch(self, inbrowser: bool = True) -> None:
+    def launch(self, inbrowser:bool = True, share:bool = True) -> None:
         """
-            Launch wishlist interface.
+            Launch the interface.
             
             Args:
                 inbrowser: Whether to automatically open in browser
+                share: Whether to create a public link
         """
-        self.ui.launch(inbrowser=inbrowser, share=True)
+        try:
+            self.ui.launch(inbrowser=inbrowser, share=share)
+        except Exception as e:
+            logger.error(f"Failed to launch interface: {e}")
+            raise
         
     def _build_ui(self) -> gr.Blocks:
         """
@@ -69,237 +97,400 @@ class LibraryInterface():
         """
         with gr.Blocks(theme='soft', css=self._load_css()) as ui:
             gr.Markdown("# Best Games Prices", elem_classes='title')
+            
             with gr.Row(elem_id='steam_id_row'):
                 gr.Button('Steam User ID', elem_classes='label', interactive=False)
                 with gr.Column():
-                    steam_id_box = gr.Textbox(container=False, value=f"{self.steam_id}", interactive=True)
+                    steam_id_box = gr.Textbox(
+                        container=False, 
+                        value=str(self.steam_id), 
+                        interactive=True,
+                        placeholder="Enter your Steam ID"
+                    )
             
-            # when given a correct steam id display create wishlist interface
+            # Status display for loading feedback
+            status_display = gr.Markdown("", visible=False)
+            
             @gr.render(inputs=[steam_id_box], triggers=[steam_id_box.submit])
-            def update_games_container(id):
-                progress=gr.Progress(track_tqdm=True)
-                progress(0, desc="Starting")
+            def update_games_container(steam_id: str):
+                self.steam_id = steam_id.strip()
+                if not steam_id:
+                    gr.Markdown("Please enter a valid Steam ID")
+                    return
                 
-                self.library_games = self._fetch_data()
+                progress = gr.Progress(track_tqdm=True)
+                progress(0, desc="Starting data fetch...")
                 
-                # allow user to select a game from dropdown
-                names = ['All Games'] + [game['name'] for game in self.library_games]
-                search_input = gr.Dropdown(choices=names, container=False)
-                
-                # create layout to display a select game
-                with gr.Column(visible=False) as single_game_container:
-                    boxes = self._create_game_row({})
-                
-                # create layout to display multiple games
-                with gr.Column(visible=True) as all_games_container:
-                    self._display_games()
-                
-                # display the game selected from dropdown to single game layout
-                search_input.change(self._display_single_game, inputs=[search_input], outputs=[single_game_container, all_games_container, *boxes])
-                # controls displaying multiple games to interface
-                steam_id_box.submit(self._update_multi_display, inputs=[], outputs=[single_game_container, all_games_container])
+                try:
+                    self.library_games = self._fetch_data(progress)
+                    
+                    if not self.library_games:
+                        gr.Markdown("No games found matching the criteria!")
+                        return
+                    
+                    # Game search dropdown
+                    game_names = ['All Games'] + [game.name for game in self.library_games]
+                    search_input = gr.Dropdown(
+                        choices=game_names, 
+                        container=False,
+                        label="Search for specific game"
+                    )
+                    
+                    # Single game display container
+                    with gr.Column(visible=False) as single_game_container:
+                        single_game_components = self._create_single_game_display()
+                    
+                    # Multiple games display container
+                    with gr.Column(visible=True) as all_games_container:
+                        self._display_games()
+                    
+                    # Event handlers
+                    search_input.change(
+                        self._display_single_game, 
+                        inputs=[search_input], 
+                        outputs=[single_game_container, all_games_container, *single_game_components]
+                    )
+                    
+                    steam_id_box.submit(
+                        self._update_multi_display, 
+                        inputs=[], 
+                        outputs=[single_game_container, all_games_container]
+                    )
+                    
+                except Exception as e:
+                    logger.error(f"Error updating games container: {e}")
+                    gr.Markdown(f"Error loading games: {str(e)}")
                                 
         return ui  
     
-    def _fetch_data(self) -> str:
+    def _fetch_data(self, progress: Optional[gr.Progress] = None) -> List[GameData]:
         """ 
-            Get games from user library that have been played and paid for.
+        Get games from user library that meet the criteria.
+        
+        Args:
+            progress: Progress tracker for UI feedback
             
-            Return: List[Dict[str, Any]], best deals for games that have beed played and paid for.
+        Returns:
+            List of GameData objects with price information
         """
-        # only select games that have been played
-        filtered_library = [entry for entry in self.library if entry['playtime_minutes'] >= self.TOTAL_PLAY_TIME]
-        appids = [item['appid'] for item in filtered_library]
-        
-        self.gg_deals.find_products_by_appid(appids, self.USER_ID)
-        data_gg = self.gg_deals.get_data()
-        games = data_gg['games']
-        
-        search_ids = [item['appid'] for item in games]
-        self.any_deal.find_products_by_appids(search_ids, self.USER_ID)
-        data_any = self.any_deal.get_data()
-        
-        
-        # sort_games = sorted(games, key=lambda x: x['gg_deals']['retail_price'], reverse=False)
-        
-        # # add playtime to game data
-        library_lookup = {item['appid']: {'mins': item['playtime_minutes'], "img": item['header_image']} for item in filtered_library}
-        gg_deals_lookup = {}
-        for item in data_any:
-            appid = item['appid']
-            gg_deals_lookup[appid] = {
-                'current_price': item['current_price']["price_current"],
-                'regular_price': item['regular_price']["price_current"],
-                'lowest_price': item['lowest_price']["price_current"]
+        try:
+            # Filter games by playtime
+            progress(0.1, desc="Filtering library games...")
+            
+            filtered_library = [
+                entry for entry in self.library 
+                if entry.get('playtime_minutes', 0) >= self.config.min_playtime_minutes
+            ]
+            
+            if not filtered_library:
+                logger.warning("No games found with sufficient playtime")
+                return []
+            
+            appids = [item['appid'] for item in filtered_library]
+            logger.info(f"Processing {len(appids)} games")
+            
+            # Fetch GG Deals data
+            progress(0.3, desc="Fetching GG Deals data...")
+            
+            self.gg_deals.find_products_by_appid(appids, self.steam_id)
+            gg_data = self.gg_deals.get_data()
+            games_data = gg_data.get('games', [])
+            
+            if not games_data:
+                logger.warning("No games found in GG Deals data")
+                return []
+            
+            # Fetch AnyDeal data
+            progress(0.6, desc="Fetching AnyDeal data...")
+            
+            search_ids = [item['appid'] for item in games_data]
+            self.any_deal.find_products_by_appids(search_ids, self.steam_id)
+            any_deal_data = self.any_deal.get_data()
+            
+            # Create lookup dictionaries for efficient data merging
+            progress(0.8, desc="Processing game data...")
+            
+            library_lookup = {
+                item['appid']: {
+                    'mins': item.get('playtime_minutes', 0), 
+                    'img': item.get('header_image')
+                } 
+                for item in filtered_library
             }
-        
-        for game in games:
-            appid = game['appid']
-            if appid in library_lookup:
-                game['playtime'] = library_lookup[appid]['mins']
-                game['header_image'] = library_lookup[appid]['img']
-            if appid in gg_deals_lookup:
-                game['current_price'] = gg_deals_lookup[appid]['current_price']
-                game['regular_price'] = gg_deals_lookup[appid]['regular_price']
-                game['lowest_price'] = gg_deals_lookup[appid]['lowest_price']
-        
-        # filter free games
-        filtered_games = list(filter(lambda game: game.get('regular_price', 0) != 0, games))
-        # sort low to high
-        sorted_games = sorted(filtered_games, key=lambda x: x['gg_deals']['retail_price'], reverse=False)
-        return sorted_games
+            
+            any_deal_lookup = {
+                item['appid']: {
+                    'current_price': item.get('current_price', {}).get('price_current', 0),
+                    'regular_price': item.get('regular_price', {}).get('price_current', 0),
+                    'lowest_price': item.get('lowest_price', {}).get('price_current', 0)
+                }
+                for item in any_deal_data
+            }
+            
+            # Convert to GameData objects
+            game_objects = []
+            for game in games_data:
+                appid = game['appid']
+                library_info = library_lookup.get(appid, {})
+                any_deal_info = any_deal_lookup.get(appid, {})
                 
-    def _update_multi_display(self):
-        """ 
-            Turns off the single game display.
-            Turns on the multiple game display.
-        """
+                game_obj = GameData(
+                    appid=appid,
+                    name=game.get('name', ''),
+                    playtime=library_info.get('mins', 0),
+                    header_image=library_info.get('img'),
+                    current_price=any_deal_info.get('current_price', 0),
+                    regular_price=any_deal_info.get('regular_price', 0),
+                    lowest_price=any_deal_info.get('lowest_price', 0),
+                    gg_deals=game.get('gg_deals', {}),
+                    url=game.get('url', '')
+                )
+                
+                # Filter out free games
+                if game_obj.regular_price > 0:
+                    game_objects.append(game_obj)
+            
+            # Sort by GG Deals retail price
+            sorted_games = sorted(
+                game_objects, 
+                key=lambda x: x.gg_deals.get('retail_price', float('inf'))
+            )
+            
+            progress(1.0, desc=f"Loaded {len(sorted_games)} games")
+            
+            logger.info(f"Successfully processed {len(sorted_games)} games")
+            return sorted_games
+            
+        except Exception as e:
+            logger.error(f"Error fetching data: {e}")
+            if progress:
+                progress(1.0, desc="Error loading data")
+            return []
+        
+    def _update_multi_display(self) -> Tuple[gr.update, gr.update]:
+        """Toggle to multiple games display."""
         return gr.update(visible=False), gr.update(visible=True)
     
-    def _display_single_game(self, term: str):
-        """ 
-            Turns on the single game display.
-            Turns off the multiple game display.
-        """
-        default_image = Image.new('RGB', (150, 200), color=(200, 200, 200))
-        if term == "All Games":
-            return gr.update(visible=False), gr.update(visible=True), '', gr.update(visible=False), gr.update(visible=False), '', default_image
-        
-        for game in self.library_games:
-            if game['name'].lower() == term.lower():
-    
-                gg_deals_class = 'better_price'
-                gg_deals_link = game.get('url',"")
-                steam_link = self._create_site_url(game.get('appid',0))
-                gg_deals_price = game.get('price', 0)
-                gg_deals_historic_price = game.get('price_lowest', 0)
-                gg_img = game.get('header_image', default_image)
-                
-                steam = game.get('steam',"")
-                if steam:
-                    steam_price = steam.get('current_price', 0)
-                    steam_low_price = steam.get('lowest_price', 0)
-                
-                return gr.update(visible=True), gr.update(visible=False), game['name'], gr.update(value=f"${gg_deals_price:.2f}", elem_classes=gg_deals_class), gr.update(f"${gg_deals_historic_price:.2f}", elem_classes=gg_deals_class), gg_deals_link, gg_img, gr.update(f"${steam_price:.2f}", elem_classes=gg_deals_class), steam_link, gr.update(f"${steam_low_price:.2f}", elem_classes=gg_deals_class)
-        
-    def _display_games(self):
-        # TODO: makes sure there is no game that has retail_price & keyshop_price == 0
-        games_to_iterate = self.library_games
-        if self.UNDER_TEN:
-            games_to_iterate = []
-            for game in self.library_games:
-                gg_deals = game['gg_deals']
-                has_retail_price = gg_deals['retail_price'] <= 10 and gg_deals['retail_price'] != 0
-                has_keyshop_price = gg_deals['keyshop_price'] <= 10 and gg_deals['keyshop_price'] != 0
-                if has_retail_price or has_keyshop_price:
-                    games_to_iterate.append(game)
-                
-        iterations = len(games_to_iterate)
-        if iterations == 0:
-            return gr.Markdown(f"No games have been found in your wishlist!")
-        
-        game_rows = []   
-        with tqdm(total=iterations, desc="Creating UI", unit='row') as pbar:
-            for i in range(0, iterations, self.BATCH_SIZE):
-                batch = games_to_iterate[i:i+self.BATCH_SIZE]
-                for game in batch:
-                    game_row = self._create_game_row(game)
-                    game_rows.append(game_row)
-                    pbar.update(1)
-        
-        return game_rows
-    
-    def _create_game_row(self, gg_deals_game: Dict[str, Any]) -> None:
-        """
-            Create a UI row for displaying a game with price comparison.
-            
-            Args:
-                steam_game: Steam game data
-                gg_deals_game: GG Deals site game data
-        """
+    def _create_single_game_display(self) -> List[gr.components.Component]:
+        """Create components for single game display."""
         default_image = Image.new('RGB', (150, 200), color=(200, 200, 200))
         
-        gg_deals_class = 'better_price'
-        gg_deals_link = gg_deals_game.get('url',"")
-        steam_link = self._create_site_url(gg_deals_game.get('appid',0))
-        gg_deals_historic_price = gg_deals_game.get('retail_price_low', 0)
-        gg_img = gg_deals_game.get('header_image', default_image)
-        
-        gg_game = gg_deals_game.get('gg_deals', {})
-        gg_deals_retail_price = gg_game.get('retail_price', 0)
-        gg_deals_keyshop_price = gg_game.get('keyshop_price', 0)
-        if gg_deals_retail_price == 0:
-            gg_deals_price = gg_deals_keyshop_price
-        elif gg_deals_keyshop_price == 0:
-            gg_deals_price = gg_deals_retail_price
-        elif gg_deals_retail_price < gg_deals_keyshop_price:
-            gg_deals_price = gg_deals_retail_price
-        else:
-            gg_deals_price = gg_deals_keyshop_price
-        
-        
-        steam_price = gg_deals_game.get('current_price', 0)
-        steam_low_price = gg_deals_game.get('lowest_price', 0)
-
-        with gr.Row(elem_classes='container game-row'):
+        with gr.Row():
             with gr.Column(scale=1):
-                imagebox = gr.Image(gg_img, container=False, show_download_button=False, show_fullscreen_button=False)
-            with gr.Column(scale=4):
-                namebox = gr.Textbox(gg_deals_game.get('name', ""), show_label=False, container=False)
-            with gr.Column(scale=1):
-                with gr.Row(elem_classes='gap'):
-                    gg_price_display = f"${gg_deals_price:.2f}" if gg_deals_price > 0 else "N/A"
-                    gg_deals_price_box = gr.Textbox(f"{gg_price_display}", show_label=False, container=False, scale=2, elem_classes=gg_deals_class)
-                    gg_deals_url = gr.Textbox(gg_deals_link, visible=False)
-                    gg_deals_btn = gr.Button('GG Deals', scale=1, elem_classes='price_btn', interactive=gg_deals_price is not None)
-                with gr.Row(elem_classes='gap'):
-                    price_display = f"${gg_deals_historic_price:.2f}" if gg_deals_historic_price > 0 else "N/A"
-                    lowest_btn = gr.Button('GG Low', scale=1, elem_classes='price_btn', interactive=False)
-                    historic_price_box = gr.Textbox(f"{price_display}", show_label=False, container=False, scale=2)
-                with gr.Row(elem_classes='gap'):
-                    steam_price_display = f"${steam_price:.2f}" if steam_price > 0 else "N/A"
-                    steam_url = gr.Textbox(steam_link, visible=False)
-                    steam_btn = gr.Button('Steam', scale=1, elem_classes='price_btn', interactive=True)
-                    steam_price_box = gr.Textbox(f"{steam_price_display}", show_label=False, container=False, scale=2)
-                with gr.Row(elem_classes='gap'):
-                    price_display = f"${steam_low_price:.2f}" if steam_low_price > 0 else "N/A"
-                    lowest_btn = gr.Button('Steam Low', scale=1, elem_classes='price_btn', interactive=False)
-                    steam_price_low_box = gr.Textbox(f"{price_display}", show_label=False, container=False, scale=2)
+                game_image = gr.Image(
+                    default_image, 
+                    container=False, 
+                    show_download_button=False, 
+                    show_fullscreen_button=False
+                )
+            with gr.Column(scale=2):
+                game_name = gr.Textbox("", show_label=False, container=False)
+                
+                with gr.Row():
+                    gg_price_box = gr.Textbox("", label="GG Deals Price", container=False)
+                    gg_historic_box = gr.Textbox("", label="GG Historic Low", container=False)
+                
+                with gr.Row():
+                    steam_price_box = gr.Textbox("", label="Steam Price", container=False)
+                    steam_low_box = gr.Textbox("", label="Steam Historic Low", container=False)
+                
+                with gr.Row():
+                    gg_deals_btn = gr.Button("View on GG Deals", elem_classes='price_btn')
+                    steam_btn = gr.Button("View on Steam", elem_classes='price_btn')
         
-        steam_btn.click(fn=self._open_url, inputs=[steam_url])
+        # Hidden components for URLs
+        gg_deals_url = gr.State("")
+        steam_url = gr.State("")
+        
+        # Button click handlers
         gg_deals_btn.click(fn=self._open_url, inputs=[gg_deals_url])
-        return namebox, gg_deals_price_box, historic_price_box, gg_deals_url, imagebox, steam_price_box, steam_url, steam_price_low_box
+        steam_btn.click(fn=self._open_url, inputs=[steam_url])
+        
+        return [
+            game_name, gg_price_box, gg_historic_box, 
+            gg_deals_url, game_image, steam_price_box, 
+            steam_url, steam_low_box
+        ]
     
-    def _create_site_url(self, appid:int) -> str:
-        base_url = "https://store.steampowered.com/app/"
-        return f"{base_url}{appid}"
+    def _display_single_game(self, term: str) -> Tuple:
+        """Display a single selected game."""
+        default_image = Image.new('RGB', (150, 200), color=(200, 200, 200))
+        
+        if term == "All Games":
+            return (
+                gr.update(visible=False), gr.update(visible=True), 
+                '', gr.update(visible=True), gr.update(visible=True), 
+                '', default_image,
+                gr.update(visible=True),
+                '',
+                gr.update(visible=True)
+            )
+        
+        # Find the selected game
+        selected_game = None
+        for game in self.library_games:
+            if game.name.lower() == term.lower():
+                selected_game = game
+                break
+        
+        if not selected_game:
+            return (
+                gr.update(visible=True), gr.update(visible=False),
+                "Game not found", gr.update(), gr.update(),
+                "", default_image
+            )
+        
+        # Prepare display data
+        gg_price = selected_game.best_gg_price
+        gg_historic = selected_game.gg_deals.get('retail_price_low', 0)
+        
+        return (
+            gr.update(visible=True), gr.update(visible=False),
+            selected_game.name,
+            gr.update(value=f"${gg_price:.2f}" if gg_price > 0 else "N/A"),
+            gr.update(value=f"${gg_historic:.2f}" if gg_historic > 0 else "N/A"),
+            selected_game.url,
+            selected_game.header_image or default_image,
+            gr.update(value=f"${selected_game.current_price:.2f}" if selected_game.current_price > 0 else "N/A"),
+            selected_game.steam_url,
+            gr.update(value=f"${selected_game.lowest_price:.2f}" if selected_game.lowest_price > 0 else "N/A")
+        )
+        
+    def _display_games(self) -> None:
+        """Display multiple games in the interface."""
+        # Apply price filter if enabled
+        games_to_display = self.library_games
+        if hasattr(self.config, 'max_price_filter') and self.config.max_price_filter > 0:
+            games_to_display = self._filter_games_by_price(self.library_games)
+        
+        if not games_to_display:
+            gr.Markdown("No games match the current filters!")
+            return
+        
+        # Display games in batches
+        with tqdm(total=len(games_to_display), desc="Creating UI", unit='game') as pbar:
+            for i in range(0, len(games_to_display), self.config.batch_size):
+                batch = games_to_display[i:i + self.config.batch_size]
+                for game in batch:
+                    self._create_game_row(game)
+                    pbar.update(1)
+                    
+    def _filter_games_by_price(self, games: List[GameData]) -> List[GameData]:
+        """Filter games by maximum price threshold."""
+        filtered = []
+        max_price = self.config.max_price_filter
+        
+        for game in games:
+            gg_deals = game.gg_deals
+            retail_price = gg_deals.get('retail_price', 0)
+            keyshop_price = gg_deals.get('keyshop_price', 0)
             
+            has_qualifying_retail = 0 < retail_price <= max_price
+            has_qualifying_keyshop = 0 < keyshop_price <= max_price
+            
+            if has_qualifying_retail or has_qualifying_keyshop:
+                filtered.append(game)
+        
+        return filtered
+    
+    def _create_game_row(self, game: GameData) -> None:
+        """
+        Create a UI row for displaying a game with price comparison.
+        
+        Args:
+            game: GameData object containing game information
+        """
+        default_image = Image.new('RGB', (150, 200), color=(200, 200, 200))
+        
+        # Calculate best GG Deals price
+        best_gg_price = game.best_gg_price
+        historic_low = game.gg_deals.get('retail_price_low', 0)
+        
+        with gr.Row(elem_classes='container game-row'):
+            # Game image
+            with gr.Column(scale=1):
+                gr.Image(
+                    game.header_image or default_image, 
+                    container=False, 
+                    show_download_button=False, 
+                    show_fullscreen_button=False
+                )
+            
+            # Game name
+            with gr.Column(scale=4):
+                gr.Textbox(game.name, show_label=False, container=False)
+            
+            # Price information
+            with gr.Column(scale=1):
+                # Current GG Deals price
+                with gr.Row(elem_classes='gap'):
+                    price_display = f"${best_gg_price:.2f}" if best_gg_price > 0 else "N/A"
+                    gr.Textbox(
+                        price_display, 
+                        show_label=False, 
+                        container=False, 
+                        scale=2, 
+                        elem_classes='better_price'
+                    )
+                    gg_deals_btn = gr.Button(
+                        'GG Deals', 
+                        scale=1, 
+                        elem_classes='price_btn', 
+                        interactive=bool(game.url)
+                    )
+                
+                # Historic low GG Deals
+                with gr.Row(elem_classes='gap'):
+                    gr.Button('GG Low', scale=1, elem_classes='price_btn', interactive=False)
+                    historic_display = f"${historic_low:.2f}" if historic_low > 0 else "N/A"
+                    gr.Textbox(historic_display, show_label=False, container=False, scale=2)
+                
+                # Current Steam price
+                with gr.Row(elem_classes='gap'):
+                    steam_btn = gr.Button('Steam', scale=1, elem_classes='price_btn')
+                    steam_price_display = f"${game.current_price:.2f}" if game.current_price > 0 else "N/A"
+                    gr.Textbox(steam_price_display, show_label=False, container=False, scale=2)
+                
+                # Steam historic low
+                with gr.Row(elem_classes='gap'):
+                    gr.Button('Steam Low', scale=1, elem_classes='price_btn', interactive=False)
+                    steam_low_display = f"${game.lowest_price:.2f}" if game.lowest_price > 0 else "N/A"
+                    gr.Textbox(steam_low_display, show_label=False, container=False, scale=2)
+        
+        # Button click handlers
+        if game.url:
+            gg_deals_btn.click(lambda: self._open_url(game.url))
+        steam_btn.click(lambda: self._open_url(game.steam_url))
+        
     @staticmethod
     def _open_url(url: str) -> None:
         """
-            Open a URL in the web browser.
-            
-            Args:
-                url: URL to open
+        Open a URL in the web browser.
+        
+        Args:
+            url: URL to open
         """
-        webbrowser.open(url)
+        if url:
+            try:
+                webbrowser.open(url)
+            except Exception as e:
+                logger.error(f"Failed to open URL {url}: {e}")
     
-    def _load_css(self):
+    def _load_css(self) -> str:
         """
-            Load CSS from a file.
-            
-            Args:
-                file_path: Path to the CSS file
-                
-            Returns:
-                The CSS content or empty string if file not found
+        Load CSS from a file.
+        
+        Returns:
+            The CSS content or empty string if file not found
         """
         try:
             file_path = "./css/styles.css"
             if os.path.exists(file_path):
-                with open(file_path, 'r') as f:
+                with open(file_path, 'r', encoding='utf-8') as f:
                     return f.read()
-                return 
+            else:
+                logger.warning(f"CSS file not found: {file_path}")
+                return ""
         except Exception as e:
-            logger.error(f"Error loading CSS: {str(e)}")
+            logger.error(f"Error loading CSS: {e}")
             return ""
