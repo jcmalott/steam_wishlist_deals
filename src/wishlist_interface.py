@@ -200,8 +200,9 @@ class WishlistInterface():
         
         gg_deals_class = 'better_price'
         gg_deals_link = gg_deals_game.get('url',"")
-        gg_deals_price = gg_deals_game.get('price', 0)
-        gg_deals_historic_price = gg_deals_game.get('price_lowest', 0)
+        gg_price_info = gg_deals_game.get('gg_deals', {})
+        gg_deals_price = gg_price_info.get('retail_price', 0)
+        gg_deals_historic_price = gg_price_info.get('retail_price_low', 0)
         
         # figure out if steam or gg deals has the better price
         steam_class = 'price'

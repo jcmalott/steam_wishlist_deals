@@ -7,7 +7,7 @@ from src.wishlist_interface import WishlistInterface
 from src.library_interface import LibraryInterface
 from src.steam_database import SteamDatabase
 
-SHOW_WISHLIST = False  
+SHOW_WISHLIST = True  
 def main():
     """Main entry point for the application."""
     load_dotenv()

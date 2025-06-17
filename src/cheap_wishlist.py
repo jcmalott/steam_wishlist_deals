@@ -3,6 +3,7 @@
 """
 import logging
 from typing import List, Dict, Any
+import os
 
 from src.steam_api import Steam
 from src.gg_deals_api import GGDealsAPI
@@ -30,7 +31,7 @@ class CheapWishlist():
                 steam_id: Steam user ID to fetch wishlist for, 0 = no user id
         """
         self.steam = Steam(steam_api_key, self.STEAM_DIR + "\steam")
-        self.gg_deals = GGDealsAPI(gg_deals_api_key, self.STEAM_DIR + "\ggdeals")
+        self.gg_deals = GGDealsAPI(gg_deals_api_key, "gg_deals_wl", os.path.join(self.STEAM_DIR, "ggdeals"))
         self.PERSONAL_STEAM_ID = steam_id
         
         # local storage of steam and gg deals game info
