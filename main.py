@@ -2,15 +2,11 @@
 from dotenv import load_dotenv
 import os
 
-import json
-
-from src.cheap_wishlist import CheapWishlist
-from src.wishlist_interface import WishlistInterface
 from src.deals_interface import DealsInterface
 from src.steam_database import SteamDatabase
 from src.steam_api import Steam
 
-SHOW_WISHLIST = False  
+SHOW_WISHLIST = True  
 def main():
     """Main entry point for the application."""
     load_dotenv()
