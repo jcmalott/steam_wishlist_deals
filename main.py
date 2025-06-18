@@ -28,8 +28,6 @@ def main():
         if not STEAM_KEY_API:
             raise ValueError("Steam API key must be set in environment variables")
 
-        # cheap_wishlist = CheapWishlist(STEAM_KEY_API, GG_DEALS_KEY_API, STEAM_ID)
-        # ui = WishlistInterface(cheap_wishlist)
         name = "wl"
         steam = Steam(STEAM_KEY_API, "data/steam")
         steam.load_wishlist(STEAM_ID)

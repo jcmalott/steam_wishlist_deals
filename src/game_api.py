@@ -147,3 +147,12 @@ class GameAPI():
             game_uniques = [item[primary_key] for item in stored_games]
         # games that haven't been loaded
         return [item for item in stored_uniques if item not in game_uniques]
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - cleanup resources."""
+        self.close()
+    
+    def close(self):
+        """Close the session and cleanup resources."""
+        if hasattr(self, 'session'):
+            self.session.close()

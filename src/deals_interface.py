@@ -235,7 +235,6 @@ class DealsInterface:
                     current_price=any_deal_info.get('current_price', 0),
                     regular_price=any_deal_info.get('regular_price', 0),
                     lowest_price=any_deal_info.get('lowest_price', 0),
-                    # TODO: this may not being access
                     gg_deals=game.get('gg_deals', {}),
                     url=game.get('url', '')
                 )
