@@ -32,44 +32,46 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # TODO: Try to use dataclass
-class LibraryInterface:
+class DealsInterface:
     """
     A class that creates a Gradio interface to display and compare
-    Steam library prices with deal aggregation sites.
+    Game prices with deal aggregation sites.
     """
     
     def __init__(self, 
-                 library: List[Dict[str, Any]], 
+                 game_data: List[Dict[str, Any]], 
                  gg_deals_api_key: str, 
                  any_deal_api_key: str, 
                  steam_id: Optional[int] = None,
+                 filename: Optional[str] = None,
                  config: Optional[PriceComparisonConfig] = None):
         """
         Initialize the LibraryInterface with game data and API keys.
         
         Args:
-            library: List of game data from Steam library
+            game_data: List of game data
             gg_deals_api_key: API key for GG Deals
             any_deal_api_key: API key for Any Deal
             steam_id: Steam user ID
+            filename: file to store game data prices locally
             config: Configuration object
         """
-        self.library = library
+        self.game_data = game_data
         self.steam_id = steam_id
         self.config = config or PriceComparisonConfig()
-        self.library_games: List[GameData] = []
+        self.games: List[GameData] = []
         self._lock = threading.Lock()
         
         # Initialize API clients
         self.gg_deals = GGDealsAPI(
             gg_deals_api_key, 
-            self.config.gg_deals_filename, 
-            os.path.join(self.config.steam_data_dir, "ggdeals")
+            filename, 
+            os.path.join(self.config.steam_data_dir, self.config.gg_deals_name)
         )
         self.any_deal = AnyDealAPI(
             any_deal_api_key, 
-            self.config.any_deal_filename, 
-            os.path.join(self.config.steam_data_dir, "anydeal")
+            filename, 
+            os.path.join(self.config.steam_data_dir, self.config.any_deal_name)
         )
         
         self.ui = self._build_ui()
@@ -122,14 +124,14 @@ class LibraryInterface:
                 progress(0, desc="Starting data fetch...")
                 
                 try:
-                    self.library_games = self._fetch_data(progress)
+                    self.games = self._fetch_data(progress)
                     
-                    if not self.library_games:
+                    if not self.games:
                         gr.Markdown("No games found matching the criteria!")
                         return
                     
                     # Game search dropdown
-                    game_names = ['All Games'] + [game.name for game in self.library_games]
+                    game_names = ['All Games'] + [game.name for game in self.games]
                     search_input = gr.Dropdown(
                         choices=game_names, 
                         container=False,
@@ -177,16 +179,7 @@ class LibraryInterface:
             # Filter games by playtime
             progress(0.1, desc="Filtering library games...")
             
-            filtered_library = [
-                entry for entry in self.library 
-                if entry.get('playtime_minutes', 0) >= self.config.min_playtime_minutes
-            ]
-            
-            if not filtered_library:
-                logger.warning("No games found with sufficient playtime")
-                return []
-            
-            appids = [item['appid'] for item in filtered_library]
+            appids = [item['appid'] for item in self.game_data]
             logger.info(f"Processing {len(appids)} games")
             
             # Fetch GG Deals data
@@ -210,12 +203,12 @@ class LibraryInterface:
             # Create lookup dictionaries for efficient data merging
             progress(0.8, desc="Processing game data...")
             
-            library_lookup = {
+            steam_lookup = {
                 item['appid']: {
                     'mins': item.get('playtime_minutes', 0), 
-                    'img': item.get('header_image')
+                    'img': item.get('header')
                 } 
-                for item in filtered_library
+                for item in self.game_data
             }
             
             any_deal_lookup = {
@@ -231,17 +224,18 @@ class LibraryInterface:
             game_objects = []
             for game in games_data:
                 appid = game['appid']
-                library_info = library_lookup.get(appid, {})
+                steam_info = steam_lookup.get(appid, {})
                 any_deal_info = any_deal_lookup.get(appid, {})
                 
                 game_obj = GameData(
                     appid=appid,
                     name=game.get('name', ''),
-                    playtime=library_info.get('mins', 0),
-                    header_image=library_info.get('img'),
+                    playtime=steam_info.get('mins', 0),
+                    header_image=steam_info.get('img'),
                     current_price=any_deal_info.get('current_price', 0),
                     regular_price=any_deal_info.get('regular_price', 0),
                     lowest_price=any_deal_info.get('lowest_price', 0),
+                    # TODO: this may not being access
                     gg_deals=game.get('gg_deals', {}),
                     url=game.get('url', '')
                 )
@@ -328,7 +322,7 @@ class LibraryInterface:
         
         # Find the selected game
         selected_game = None
-        for game in self.library_games:
+        for game in self.games:
             if game.name.lower() == term.lower():
                 selected_game = game
                 break
@@ -359,9 +353,9 @@ class LibraryInterface:
     def _display_games(self) -> None:
         """Display multiple games in the interface."""
         # Apply price filter if enabled
-        games_to_display = self.library_games
+        games_to_display = self.games
         if hasattr(self.config, 'max_price_filter') and self.config.max_price_filter > 0:
-            games_to_display = self._filter_games_by_price(self.library_games)
+            games_to_display = self._filter_games_by_price(self.games)
         
         if not games_to_display:
             gr.Markdown("No games match the current filters!")

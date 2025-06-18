@@ -12,6 +12,6 @@ class PriceComparisonConfig:
         self.max_price_filter: float = 10.0
         self.min_playtime_minutes: int = 30
         self.steam_data_dir: str = 'data'
-        self.gg_deals_filename: str = 'gg_deals_library'
-        self.any_deal_filename: str = 'real_deal_library'
+        self.gg_deals_name: str = 'ggdeals'
+        self.any_deal_name: str = 'anydeal'
         self.default_user_id: str = os.getenv('PERSONAL_STEAM_ID_ME')

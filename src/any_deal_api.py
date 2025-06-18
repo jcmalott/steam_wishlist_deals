@@ -22,7 +22,7 @@ class AnyDealAPI(GameAPI):
     """
     ANY_DEAL_BASE_URL = 'https://api.isthereanydeal.com'
     
-    def __init__(self, api_key:str, filename:str='any_deal_games', data_dir:str = 'data'):
+    def __init__(self, api_key:str, name:str='games', data_dir:str = 'data'):
         """
             Initialize connection with GG Deals client with an API key.
             
@@ -31,7 +31,7 @@ class AnyDealAPI(GameAPI):
                 data_dir (str): Directory to store cached data
         """
         self.api_key = api_key
-        self.filename = filename
+        self.filename = f"any_deals_{name}"
         self.steam_shop_id = 61
         super().__init__(self.ANY_DEAL_BASE_URL, data_dir)
         
