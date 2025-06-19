@@ -1,6 +1,6 @@
 # Steam Deals
 
-Allows users with a steam account to view deals for games on their wishlist or library.
+Allows users with a Steam account to view deals for games on their wishlist or library.<br>
 https://store.steampowered.com/account/
 
 ## Table of Contents
@@ -14,8 +14,8 @@ https://store.steampowered.com/account/
 
 ## Installation
 
-Clone repo.
-Open terminal to file location you want to install project.
+Clone repo. <br>
+Open a terminal to the file location you want to install the project.
 ```bash
 git clone https://github.com/jcmalott/steam_wishlist_deals.git
 cd steam_wishlist_deals
@@ -24,13 +24,17 @@ npm install
 
 ## Usage
 
-Explain how to use the project. Include examples or code snippets if applicable.
+To run the application in default mode, displaying user wishlist deals, in the terminal within the project location.
 
-```javascript
-// Example code
-const example = require('project-name');
-example.run();
+```python
+py main.py
 ```
+
+This will open a Gradio web application.
+```markdown
+![Main Screen](images/initial-screen.jpg)
+```
+My default Steam ID will be displayed for testing purposes, but you can insert your ID as well.
 
 ## Features
 
