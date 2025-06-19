@@ -31,10 +31,9 @@ py main.py
 ```
 
 This will open a Gradio web application.
-```markdown
 ![Main Screen](images/initial-screen.jpg)
-```
-My default Steam ID will be displayed for testing purposes, but you can insert your ID as well.
+
+For testing purposes, my default Steam ID will be displayed; alternatively, you can also enter your ID.
 
 ## Features
 
