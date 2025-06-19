@@ -47,8 +47,11 @@ From top to bottom.
 - The cheapest price it sold for
 - Steam's current price
 - Cheapest price sold on Steam
+
 Click the GG Deams button to take you to that deal. <br>
+![Best Deal](images/gg-deals.jpg)
 Click the Steam button to go to that game's Steam page.
+![Steam Page](images/steam-page.jpg)
 
 ## Features
 
