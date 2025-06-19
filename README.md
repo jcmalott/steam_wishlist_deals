@@ -6,11 +6,6 @@ https://store.steampowered.com/account/
 ## Table of Contents
 - [Installation](#installation)
 - [Usage](#usage)
-- [Features](#features)
-- [Displaying Images](#displaying-images)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
 
 ## Installation
 
