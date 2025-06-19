@@ -15,12 +15,27 @@ class ExchangeRates():
     FILENAME = 'data/exchange_rates.json'
     
     def __init__(self):
+        """
+        Retrieves daily exchanges rates for most common currencies compared to US dollar.
+        """
         self.exchange_rates = {}
         self._get_exchange_rates()
+        
+        # Initialize session for connection reuse
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'ExchangeRates-Client/1.0',
+            'Accept': 'application/json'
+        })
     
-    # TODO: Throw error for incorrect exchange rate
     def get_price_dollar(self, price, currency):
-        # if it is then make the conversion, or return the orginal price
+        """ 
+        Converts price to US dollar.
+        
+        Args:
+            price: money value that is being converted
+            currency: what exchange rate 
+        """
         if price > 0 and currency != '':
             new_price = price/self.exchange_rates[currency] 
             return round(new_price, 2)
@@ -29,8 +44,11 @@ class ExchangeRates():
     
     
     def _get_exchange_rates(self):
+        """ 
+        Store most common exchange rates stored locally.
+        """
         if not check_if_recent_save(self.FILENAME):
-            response = requests.get(self.EXCHANGE_RATES_URL)
+            response = self.session.get(self.EXCHANGE_RATES_URL)
     
             if response.status_code == 200:
                 results = response.json()
@@ -41,3 +59,12 @@ class ExchangeRates():
         else:
             self.exchange_rates = load_from_json(self.FILENAME)['data']
             logger.info(f"Exchange Rates have been stored within last 24 hours.")
+            
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - cleanup resources."""
+        self.close()
+    
+    def close(self):
+        """Close the session and cleanup resources."""
+        if hasattr(self, 'session') and self.session:
+            self.session.close()

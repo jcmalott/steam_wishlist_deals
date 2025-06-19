@@ -21,11 +21,6 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-class AnyDealAPIError(GameAPIError):
-    """Custom exception for AnyDeal API specific errors."""
-    pass
-
-
 class AnyDealAPI(GameAPI):
     """
     A client for interacting with the IsThereAnyDeal API.
@@ -103,7 +98,6 @@ class AnyDealAPI(GameAPI):
             
         Raises:
             ValueError: If appids is empty or user_id is invalid
-            AnyDealAPIError: If API requests fail
         """
         if not appids:
             raise ValueError("App IDs list cannot be empty")
@@ -159,8 +153,7 @@ class AnyDealAPI(GameAPI):
             return pricing_data
             
         except Exception as e:
-            logger.error(f"Failed to download fresh data: {e}")
-            raise AnyDealAPIError(f"Failed to download pricing data: {e}")
+            logger.error(f"Failed to download pricing data: {e}")
     
     def _lookup_internal_ids(self, appids: List[int]) -> Dict[str, int]:
         """
@@ -171,9 +164,6 @@ class AnyDealAPI(GameAPI):
             
         Returns:
             Dictionary mapping internal IDs to Steam App IDs
-            
-        Raises:
-            AnyDealAPIError: If lookup request fails
         """
         url = f"{self.ANY_DEAL_BASE_URL}/{self.LOOKUP_ENDPOINT.format(shop_id=self.steam_shop_id)}"
         
@@ -199,10 +189,8 @@ class AnyDealAPI(GameAPI):
             
         except requests.RequestException as e:
             logger.error(f"ID lookup request failed: {e}")
-            raise AnyDealAPIError(f"Failed to lookup internal IDs: {e}")
         except ValueError as e:
             logger.error(f"Invalid JSON response in ID lookup: {e}")
-            raise AnyDealAPIError(f"Invalid response format: {e}")
     
     def _download_pricing_data(self, id_mapping: Dict[str, int]) -> List[Dict[str, Any]]:
         """
@@ -236,7 +224,7 @@ class AnyDealAPI(GameAPI):
                     )
                     all_pricing_data.extend(batch_data)
                     
-                except AnyDealAPIError as e:
+                except Exception as e:
                     logger.error(f"Batch download failed: {e}")
                     # Continue with other batches
                 
@@ -286,10 +274,8 @@ class AnyDealAPI(GameAPI):
             
         except requests.RequestException as e:
             logger.error(f"Pricing batch request failed: {e}")
-            raise AnyDealAPIError(f"Failed to download pricing batch: {e}")
         except ValueError as e:
             logger.error(f"Invalid JSON in pricing response: {e}")
-            raise AnyDealAPIError(f"Invalid pricing response format: {e}")
     
     def _process_pricing_response(
         self, 
@@ -396,7 +382,6 @@ class AnyDealAPI(GameAPI):
             logger.info(f"Saved {len(pricing_data)} price records to cache")
         except Exception as e:
             logger.error(f"Failed to save pricing data: {e}")
-            raise AnyDealAPIError(f"Failed to save data: {e}")
     
     def _load_cached_pricing_data(self) -> List[Dict[str, Any]]:
         """Load pricing data from cache file."""
