@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from src.gg_deals_api import GGDealsAPI
 from src.any_deal_api import AnyDealAPI
-from src.price_comparison_config import PriceComparisonConfig
+from src.deals_config import DealsConfig
 from src.data_class import GameData
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -44,7 +44,7 @@ class DealsInterface:
                  any_deal_api_key: str, 
                  steam_id: Optional[int] = None,
                  filename: Optional[str] = None,
-                 config: Optional[PriceComparisonConfig] = None):
+                 config: Optional[DealsConfig] = None):
         """
         Initialize the LibraryInterface with game data and API keys.
         
@@ -58,7 +58,7 @@ class DealsInterface:
         """
         self.game_data = game_data
         self.steam_id = steam_id
-        self.config = config or PriceComparisonConfig()
+        self.config = config or DealsConfig()
         self.games: List[GameData] = []
         self._lock = threading.Lock()
         
@@ -66,12 +66,12 @@ class DealsInterface:
         self.gg_deals = GGDealsAPI(
             gg_deals_api_key, 
             filename, 
-            os.path.join(self.config.steam_data_dir, self.config.gg_deals_name)
+            os.path.join(self.config.data_dir, self.config.gg_deals_name)
         )
         self.any_deal = AnyDealAPI(
             any_deal_api_key, 
             filename, 
-            os.path.join(self.config.steam_data_dir, self.config.any_deal_name)
+            os.path.join(self.config.data_dir, self.config.any_deal_name)
         )
         
         self.ui = self._build_ui()

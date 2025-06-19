@@ -44,7 +44,7 @@ class GGDealsAPI(GameAPI):
             'ids': 0,
             'key': self.api_key
         }
-        is_recent_save = check_if_recent_save(self.save_file, self.CACHE_DURATION)
+        is_recent_save = check_if_recent_save(self.save_file, self.config.cache_duration)
         if not is_recent_save:
             # Download fresh data for each game appid
             super().download_data(self._process_json, params, appids)

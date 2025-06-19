@@ -11,7 +11,6 @@ import requests
 import logging
 from typing import Dict, Any, List, Optional, Union
 from pathlib import Path
-import time
 
 from helper import check_if_recent_save, save_to_json
 from src.game_api import GameAPI, GameAPIError
@@ -60,6 +59,7 @@ class Steam(GameAPI):
         self.api_key = api_key.strip()
         super().__init__(self.STEAM_STORE_API_URL, data_dir)
         
+        # TODO: place inside game api
         # Create session for connection reuse
         self.session = requests.Session()
         self.session.headers.update({
@@ -94,7 +94,7 @@ class Steam(GameAPI):
         super().set_file_name(f"{self.STEAM_FILENAME}-{user_id}.json")
         
         # Check if we have recent cached data
-        is_recent_save = check_if_recent_save(self.save_file, self.CACHE_DURATION)
+        is_recent_save = check_if_recent_save(self.save_file, self.config.cache_duration)
         
         if not is_recent_save:
             logger.info("Fetching fresh wishlist data")
@@ -113,30 +113,6 @@ class Steam(GameAPI):
             super().download_data(self._process_json, {"appids": 0})
             
         return self._load_cached_data()
-    
-    def _make_request(self, url: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Make HTTP request with retry logic and error handling.
-        
-        Args:
-            url: The URL to make request to
-            params: Query parameters
-            
-        Returns:
-            JSON response data
-        """
-        try:
-            response = self.session.get(
-                url, 
-                params=params
-            )
-            response.raise_for_status()
-            return response.json()
-                
-        except requests.RequestException as e:
-            logger.error(f"Request failed {e}")
-        except ValueError as e:
-            logger.error(f"Invalid JSON response: {e}")
             
     def _check_valid_wishlist(self, data: Dict[str, Any]) -> List[Dict]: 
         """
@@ -304,7 +280,9 @@ class Steam(GameAPI):
         # Convert price to USD if possible
         price = price_overview.get("final_formatted", "")
         currency = price_overview.get("currency", "")
-        filtered_data = self._change_price_to_dollar(price, currency, filtered_data)
+        converted_price = self._change_price_to_dollar(price, currency)
+        filtered_data["currency"] = "USD"
+        filtered_data["price"] = converted_price
         
         # Add optional metadata
         metacritic = game.get("metacritic", {})

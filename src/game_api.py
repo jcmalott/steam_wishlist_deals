@@ -1,152 +1,380 @@
-from typing import Dict, Optional, Any, List
+from typing import Dict, Optional, Any, List, Callable, Union
 import logging
-import os
-from pathlib import Path
 import requests
 from tqdm import tqdm
 import time
 import re
+from abc import ABC, abstractmethod
+import os
 
 from helper import save_to_json, check_if_recent_save, load_from_json
 from src.exchange_rates import ExchangeRates
 from src.custom_errors import GameAPIError
+from src.deals_config import DealsConfig
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
-        
-class GameAPI():
-    BATCH_SIZE = 20 # items, How many resquests to make in one iteration
-    SLEEP_TIME = 1 # Seconds, Pause between each item in batch
-    BATCH_PAUSE = 2 # Seconds, Pause between each batch
-    CACHE_DURATION = 72 # Hours, How long to wait before refreshing all downloaded data
-    # There is a 200 request limit every 5 mins. (5*60)/200 = 1.5
-    SLEEP_TIME = 1.5 # Seconds, time between calling each game
+
+
+class GameAPI(ABC):
+    """
+    Abstract base class for game API clients.
+    Provides common functionality for downloading and caching game data.
+    """
     
-    def __init__(self, base_api_url: str, data_dir: str = ''):
-        self.base_url_api = base_api_url
-        self.session = requests.Session() # increase performance
-        self.rates = ExchangeRates() # changing other currencies to dollars
-        
-        self.data_dir = data_dir # folder to store local data
-        Path(self.data_dir).mkdir(exist_ok=True) # Make dir if doesn't exist
-            
-    def download_data(self, func_process, params, uniques: List[Any] = {}):
-        """ 
-            Data will be stored after each batch incase server disconnects.
-            
-            Args:
-                func_process: Function that processes any data returned from base_url_api
-                uniques: appids
-                params: What to send when calling base_url_api to retrieve correct game data
-            Note:
-                params {
-                    "first_key": <- what is being searched for
-                }
+    def __init__(self, base_api_url: str, data_dir: str, config: Optional[DealsConfig] = None):
         """
-        if uniques: # each unique will be a primary key within games
-            data = {'unique': uniques, 'games': []}
-        else: # only download data that hasn't been store yet
-            logger.info(f"Loading Stored Data: {self.save_file}")
-            stored_data = load_from_json(self.save_file)['data']
-            data = {'unique': stored_data['unique'], 'games': stored_data['games']}
+        Initialize the GameAPI client.
         
+        Args:
+            base_api_url: Base URL for the API
+            data_dir: Directory to store cached data
+            config: API configuration settings
+            
+        Raises:
+            ValueError: If base_api_url is empty or invalid
+        """
+        if not base_api_url or not base_api_url.strip():
+            raise ValueError("Base API URL cannot be empty")
+            
+        self.base_url_api = base_api_url.strip()
+        self.config = config or DealsConfig()
+        self.save_dir = data_dir or self.config.data_dir
+        self.save_file: Optional[str] = None
+        
+        # Initialize session with better defaults
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'GameAPI-Client/1.0',
+            'Accept': 'application/json'
+        })
+        
+        # Initialize exchange rates for currency conversion
+        self.rates = None
+        try:
+            self.rates = ExchangeRates()
+        except Exception as e:
+            logger.warning(f"Failed to initialize exchange rates: {e}")
+    
+    def set_file_name(self, filename: str):
+        """
+        Set the filename for local data storage.
+        
+        Args:
+            filename: Name of the file to store data
+            
+        Raises:
+            ValueError: If filename is empty or contains invalid characters
+        """
+        if not filename or not filename.strip():
+            raise ValueError("Filename cannot be empty")
+            
+        # Sanitize filename
+        sanitized_filename = re.sub(r'[<>:"/\\|?*]', '_', filename.strip())
+        self.save_file = os.path.join(self.save_dir, sanitized_filename)
+    
+    def download_data(
+        self, 
+        process_func: Callable, 
+        params: Dict[str, Any], 
+        unique_ids: Optional[List[Any]] = None):
+        """
+        Download and process game data with progress tracking and error handling.
+        
+        Args:
+            process_func: Function to process API responses
+            params: Parameters for API requests
+            unique_ids: List of unique identifiers to download
+            
+        Returns:
+            DownloadStats object with operation statistics
+            
+        Raises:
+            ValueError: If required parameters are missing
+            GameAPIError: If download fails critically
+        """
+        if not self.save_file:
+            raise ValueError("Save file not set. Call set_file_name() first.")
+            
+        if not callable(process_func):
+            raise ValueError("process_func must be callable")
+            
+        if not params:
+            raise ValueError("params cannot be empty")
+        
+        try:
+            # Load or initialize data
+            data = self._initialize_data(unique_ids)
+            
+            # Determine what items need to be downloaded
+            items_to_retrieve = self._get_items_to_download(data['games'], data['unique'])
+            
+            if not items_to_retrieve:
+                logger.info("All game data already retrieved, nothing to fetch")
+                return
+            
+            logger.info(f"Downloading {len(items_to_retrieve)} items")
+            # Download items with progress tracking
+            self._download_items(items_to_retrieve, params, process_func, data)
+            
+        except Exception as e:
+            logger.error(f"Download failed: {e}")
+            raise
+    
+    def _initialize_data(self, unique_ids: Optional[List[Any]]) -> Dict[str, Any]:
+        """Initialize game data or load data from local file."""
+        if unique_ids:
+            return {'unique': unique_ids, 'games': []}
+        else:
+            logger.info(f"Loading stored data from: {self.save_file}")
+            stored_data = load_from_json(self.save_file)
+            if stored_data and 'data' in stored_data:
+                return stored_data['data']
+            else:
+                logger.warning("No valid stored data found, starting fresh")
+                return {'unique': [], 'games': []}
+    
+    def _get_items_to_download(self, stored_games: List[Dict], stored_uniques: List[Any]) -> List[Any]:
+        """
+        Determine which items still need to be downloaded.
+        Find all the game ids that are in stored_uniques but not stored_games.
+        
+        Note:
+            Local file stores all game ids that need to be downloaded (unquies)
+            All games that are currently downloaded (stored_games)
+        """
+        if not stored_games:
+            return stored_uniques
+            
+        # Get the primary key from the first game
+        primary_key = self._get_primary_key(stored_games[0])
+        if not primary_key:
+            logger.warning("Could not determine primary key from stored games")
+            return stored_uniques
+            
+        # Extract IDs of already downloaded games
+        downloaded_ids = {game.get(primary_key) for game in stored_games if primary_key in game}
+        
+        # Return items that haven't been downloaded yet
+        return [item for item in stored_uniques if item not in downloaded_ids]
+    
+    def _get_primary_key(self, game_data: Dict[str, Any]) -> Optional[str]:
+        """
+        Determine the unquie id from game data.
+        Common primary keys: 'appid'
+        """
+        common_keys = ['appid']
+        for key in common_keys:
+            if key in game_data:
+                return key
+        
+        # If no common key found, return the first key
+        return next(iter(game_data.keys())) if game_data else None
+    
+    def _download_items(
+        self, 
+        items_to_retrieve: List[Any], 
+        params: Dict[str, Any], 
+        process_func: Callable,
+        data: Dict[str, Any]
+    ):
+        """Download items with batching and progress tracking."""
         stored_games = data['games']
-        store_uniques = data['unique']
-        items_to_retrieve = self._items_left_to_download(stored_games, store_uniques)
-        
-        if not items_to_retrieve:
-            logger.info("All game data already retrieved, nothing to fetch")
-            return
+        stored_uniques = data['unique']
         
         iterations = len(items_to_retrieve)
-        # display progress bar for overall download
-        with tqdm(total=iterations, desc="Downloading Game Data", unit='game') as pbar:  
-            # download the games in batches to not overload the server  
-            for i in range(0, iterations, self.BATCH_SIZE):
-                batch = items_to_retrieve[i:i+self.BATCH_SIZE]
+        # Progress bar for overall download
+        with tqdm(total=iterations, desc="Downloading Game Data", unit='item') as pbar:
+            # Process items in batches
+            for i in range(0, iterations, self.config.batch_size):
+                batch = items_to_retrieve[i:i + self.config.batch_size]
                 
-                for id in batch:
-                    # item that is being searched
-                    primary_key = next(iter(params))
-                    params[primary_key] = id
-                    
+                # Process each item in the batch
+                for item_id in batch:
                     try:
-                        # return any items found from search
-                        response = self.session.get(self.base_url_api, params=params)
-                        response.raise_for_status()
+                        result = self._download_single_item(item_id, params, process_func)
                         
-                        # function to process any data that was recieved
-                        # if Null don't store
-                        processed_json = func_process(response.json(), id)
-                        if processed_json:
-                            stored_games.append(processed_json)
+                        if result:
+                            stored_games.append(result)
                         else:
-                            # remove matching id keeping track of what items have been downloaded
-                            store_uniques.remove(id)
-                    except requests.RequestException as e:
-                        logger.error(f"Failed to retrieve details for game {id}: {str(e)}")
-                        if response.status_code == 429:
-                            break
-                        raise GameAPIError(f"Failed to retrieve game data: {str(e)}", response.status_code)
-                    time.sleep(self.SLEEP_TIME)
-                    pbar.update(1)
-                # update and save data incase of disconnect
-                data['unique'] = store_uniques
-                data['games'] = stored_games
-                save_to_json(self.save_file, data)
+                            # Remove ID from uniques if processing failed
+                            if item_id in stored_uniques:
+                                stored_uniques.remove(item_id)
+                            
+                    except GameAPIError as e:
+                        logger.error(f"Failed to download item {item_id}: {e}")
+                    
+                    except Exception as e:
+                        logger.error(f"Unexpected error downloading item {item_id}: {e}")
+                    
+                    finally:
+                        pbar.update(1)
+                        time.sleep(self.config.sleep_time)
                 
-                # Pause between batches to avoid overwhelming the server
-                if i + self.BATCH_SIZE < iterations:
-                    time.sleep(self.BATCH_PAUSE)
-                    
-    def set_file_name(self, filename):
-        self.save_file = os.path.join(self.data_dir, filename)
-                    
-    def get_data(self):
-        """ 
-            Retrieves any data that was stored using the download_data() function.
-            
-            Returns locally stored data and nothing if stored data wasn't found.
+                # Save progress after each batch
+                data['unique'] = stored_uniques
+                data['games'] = stored_games
+                self._save_data(data)
+                
+                # Pause between batches
+                if i + self.config.batch_size < len(items_to_retrieve):
+                    time.sleep(self.config.batch_pause)
+    
+    def _download_single_item(
+        self, 
+        item_id: Any, 
+        param_key: str, 
+        params: Dict[str, Any], 
+        process_func: Callable
+    ) -> Optional[Dict[str, Any]]:
+        """Download game data for single item and filter it."""
+        # Update parameters with current item ID
+        # Get the parameter key for item ID
+        current_params = params.copy()
+        param_key = next(iter(current_params.keys()))
+        current_params[param_key] = item_id
+        
+        try:
+            json_data = self._make_request(self.base_url_api, current_params)
+            return process_func(json_data, item_id)
+                
+        except requests.RequestException as e:
+                status_code = getattr(e.response, 'status_code', None) if hasattr(e, 'response') else None
+                raise GameAPIError(f"Failed to download item {item_id}: {e}", status_code)
+    
+    def _save_data(self, data: Dict[str, Any]):
+        """Save data to file with error handling."""
+        try:
+            save_to_json(self.save_file, data)
+        except Exception as e:
+            logger.error(f"Failed to save data to {self.save_file}: {e}")
+            raise GameAPIError(f"Failed to save data: {e}")
+    
+    def get_data(self) -> Dict[str, Any]:
         """
-        local_data = load_from_json(self.save_file)
-        if not local_data:
-            local_data = {}
-        return local_data['data']
-    
-    def _change_price_to_dollar(self, og_price, currency, data):
-        price = og_price
-        if isinstance(price, str):
-            number = re.search(r'(\d+\.\d+|\d+)', price)
-            price = float(number.group(1)) if number else og_price
+        Retrieve locally stored data.
         
-        if currency != '' and currency != 'USD':
-            price = self.rates.get_price_dollar(price, currency)
-            currency = "USD"
-            
-        data["currency"] = currency
-        data["price"] = price
-        
-        return data
-    
-    def change_price_to_dollar(self, og_price, currency):
-        if currency == '':
-            return og_price
-        
-        return self.rates.get_price_dollar(og_price, currency)
-    
-    def _items_left_to_download(self, stored_games, stored_uniques):
-        """ 
-            Comparing uniques with game primary keys
-            Whatever game key hasn't match to a unique hasn't been loaded yet
+        Returns:
+            Dictionary containing stored data, empty dict if no data found
         """
-        game_uniques = []
-        primary_key = 0
-        if stored_games:
-            primary_key = next(iter(stored_games[0]))
-            game_uniques = [item[primary_key] for item in stored_games]
-        # games that haven't been loaded
-        return [item for item in stored_uniques if item not in game_uniques]
+        if not self.save_file:
+            logger.warning("Save file not set, returning empty data")
+            return {}
+            
+        try:
+            local_data = load_from_json(self.save_file)
+            if local_data and 'data' in local_data:
+                return local_data['data']
+        except Exception as e:
+            logger.warning(f"Failed to load data from {self.save_file}: {e}")
+            
+        return {'unique': [], 'games': []}
+    
+    def _change_price_to_dollar(self, og_price: Union[str, float], currency: str) -> float:
+        """
+        Convert price to USD.
+        
+        Args:
+            og_price: Original price
+            currency: Currency code
+            
+        Returns:
+            Converted price
+        """
+        numeric_price = self._extract_numeric_price(og_price) if isinstance(og_price, str) else og_price
+        
+        if currency and currency != 'USD' and self.rates:
+            try:
+                numeric_price = self.rates.get_price_dollar(numeric_price, currency)
+                currency = "USD"
+            except Exception as e:
+                logger.warning(f"Failed to convert price: {e}")
+        
+        return numeric_price
+    
+    def _extract_numeric_price(self, price_str: str) -> float:
+        """
+        Extract numeric value from price string.
+        
+        Args:
+            price_str: Price as string (e.g., "$19.99", "19,99 €")
+            
+        Returns:
+            Numeric price value
+        """
+        if not isinstance(price_str, str):
+            return float(price_str) if price_str else 0.0
+            
+        # Remove common currency symbols and normalize decimal separators
+        cleaned = re.sub(r'[^\d.,]', '', price_str)
+        
+        # Handle different decimal separators
+        if ',' in cleaned and '.' in cleaned:
+            # Assume last separator is decimal (e.g., "1,234.56")
+            if cleaned.rfind(',') > cleaned.rfind('.'):
+                cleaned = cleaned.replace('.', '').replace(',', '.')
+            else:
+                cleaned = cleaned.replace(',', '')
+        elif ',' in cleaned:
+            # Could be thousands separator or decimal separator
+            parts = cleaned.split(',')
+            if len(parts) == 2 and len(parts[1]) <= 2:
+                # Likely decimal separator (e.g., "19,99")
+                cleaned = cleaned.replace(',', '.')
+            else:
+                # Likely thousands separator (e.g., "1,234")
+                cleaned = cleaned.replace(',', '')
+        
+        try:
+            return float(cleaned) if cleaned else 0.0
+        except ValueError:
+            logger.warning(f"Could not parse price: {price_str}")
+            return 0.0
+        
+    def _make_request(self, url: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Make HTTP request with retry logic and error handling.
+        
+        Args:
+            url: The URL to make request to
+            params: Query parameters
+            
+        Returns:
+            JSON response data
+        """
+        try:
+            response = self.session.get(
+                url, 
+                params=params
+            )
+            response.raise_for_status()
+            return response.json()
+                
+        except requests.RequestException as e:
+            logger.error(f"Request failed {e}")
+        except ValueError as e:
+            logger.error(f"Invalid JSON response: {e}")
+    
+    @abstractmethod
+    def get_base_url(self) -> str:
+        """
+        Get the base URL for the service.
+        Must be implemented by subclasses.
+        """
+        pass
+    
+    def _process_json(self, response: Dict[str, Any], game_id: Union[int, str]) -> Dict[str, Any]:
+        """
+        Process game data retrieved by session request.
+        Must be implemented by subclasses.
+        """
+        pass
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit - cleanup resources."""
@@ -154,5 +382,5 @@ class GameAPI():
     
     def close(self):
         """Close the session and cleanup resources."""
-        if hasattr(self, 'session'):
+        if hasattr(self, 'session') and self.session:
             self.session.close()
