@@ -6,7 +6,7 @@ from src.deals_interface import DealsInterface
 from src.steam_database import SteamDatabase
 from src.steam_api import Steam
 
-SHOW_WISHLIST = False  
+SHOW_WISHLIST = True  
 def main():
     """Main entry point for the application."""
     load_dotenv()
