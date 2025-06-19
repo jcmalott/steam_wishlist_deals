@@ -52,8 +52,3 @@ Click the GG Deams button to take you to that deal. <br>
 ![Best Deal](images/gg-deals.jpg)
 Click the Steam button to go to that game's Steam page.
 ![Steam Page](images/steam-page.jpg)
-
-## Contact
-
-- Project Maintainer: [Your Name](mailto:your.email@example.com)
-- Project Link: [https://github.com/username/repository](https://github.com/username/repository)
