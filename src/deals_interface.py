@@ -196,7 +196,13 @@ class DealsInterface:
             # Fetch AnyDeal data
             progress(0.6, desc="Fetching AnyDeal data...")
             
-            search_ids = [item['appid'] for item in games_data]
+            search_ids = [
+                item['appid'] for item in games_data 
+                # if TRUE only search for deals under max price
+                if self.config.price_search and 
+                    (item["gg_deals"]["retail_price"] < self.config.max_price or 
+                     item["gg_deals"]["keyshop_price"] < self.config.max_price)
+            ]
             self.any_deal.find_products_by_appids(search_ids, self.steam_id)
             any_deal_data = self.any_deal.get_data()
             
@@ -211,6 +217,7 @@ class DealsInterface:
                 for item in self.game_data
             }
             
+            # print(f"ANY {any_deal_data}")
             any_deal_lookup = {
                 item['appid']: {
                     'current_price': item.get('current_price', {}).get('price_current', 0),
@@ -222,6 +229,7 @@ class DealsInterface:
             
             # Convert to GameData objects
             game_objects = []
+            # print(f"{games_data[0]}")
             for game in games_data:
                 appid = game['appid']
                 steam_info = steam_lookup.get(appid, {})

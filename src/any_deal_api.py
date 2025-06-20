@@ -70,7 +70,7 @@ class AnyDealAPI(GameAPI):
         self.filename = f"any_deals_{self.name}"
         self.steam_shop_id = self.STEAM_SHOP_ID
         
-        super().__init__(self.ANY_DEAL_BASE_URL, data_dir, config)
+        super().__init__(self.ANY_DEAL_BASE_URL, data_dir)
         
         # Update session headers for AnyDeal API
         self.session.headers.update({
@@ -82,8 +82,7 @@ class AnyDealAPI(GameAPI):
     def find_products_by_appids(
         self, 
         appids: List[Union[int, str]], 
-        user_id: str,
-        force_refresh: bool = False
+        user_id: str
     ) -> List[Dict[str, Any]]:
         """
         Retrieve pricing details for multiple Steam games by App IDs.
@@ -91,7 +90,6 @@ class AnyDealAPI(GameAPI):
         Args:
             appids: List of Steam App IDs to lookup
             user_id: User identifier for cache file naming
-            force_refresh: Force fresh data download even if cache is recent
             
         Returns:
             List of game pricing information dictionaries
@@ -110,14 +108,12 @@ class AnyDealAPI(GameAPI):
         logger.info(f"Retrieving price details for {len(appids)} games")
         
         # Set cache filename
-        cache_filename = f"{self.filename}-{user_id}.json"
-        super().set_file_name(cache_filename)
+        super().set_file_name(f"{self.filename}-{user_id}.json")
         
         # Check if we need fresh data
         is_cache_fresh = check_if_recent_save(self.save_file, self.config.cache_duration)
-        needs_refresh = force_refresh or not is_cache_fresh
         
-        if needs_refresh:
+        if not is_cache_fresh:
             logger.info("Downloading fresh pricing data")
             return self._download_fresh_data(appids)
         else:
@@ -171,7 +167,7 @@ class AnyDealAPI(GameAPI):
         lookup_data = [f"app/{appid}" for appid in appids]
         
         try:
-            result = self._make_request(url, json=lookup_data,)
+            result = self._post_request(url, lookup_data)
             
             # Create mapping from internal ID to Steam App ID
             id_mapping = {}
@@ -373,12 +369,7 @@ class AnyDealAPI(GameAPI):
     def _save_pricing_data(self, pricing_data: List[Dict[str, Any]]):
         """Save pricing data to cache file."""
         try:
-            cache_data = {
-                'timestamp': time.time(),
-                'data': pricing_data,
-                'count': len(pricing_data)
-            }
-            save_to_json(self.save_file, cache_data)
+            save_to_json(self.save_file, pricing_data)
             logger.info(f"Saved {len(pricing_data)} price records to cache")
         except Exception as e:
             logger.error(f"Failed to save pricing data: {e}")

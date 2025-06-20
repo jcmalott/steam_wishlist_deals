@@ -9,6 +9,10 @@ class DealsConfig:
     def __init__(self):
         load_dotenv()
         
+        """Configuration searching for a deal under max price"""
+        self.price_search: bool = True # FALSE, searches deals for all games, TRUE only games under max_price
+        self.max_price: float = 5.0
+        
         """Configuration class for API settings."""
         self.batch_size: int = 20
         self.sleep_time: float = 1.5

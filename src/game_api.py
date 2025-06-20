@@ -228,8 +228,7 @@ class GameAPI(ABC):
     
     def _download_single_item(
         self, 
-        item_id: Any, 
-        param_key: str, 
+        item_id: Any,  
         params: Dict[str, Any], 
         process_func: Callable
     ) -> Optional[Dict[str, Any]]:
@@ -352,6 +351,30 @@ class GameAPI(ABC):
             response = self.session.get(
                 url, 
                 params=params
+            )
+            response.raise_for_status()
+            return response.json()
+                
+        except requests.RequestException as e:
+            logger.error(f"Request failed {e}")
+        except ValueError as e:
+            logger.error(f"Invalid JSON response: {e}")
+            
+    def _post_request(self, url: str, json: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Make HTTP request with retry logic and error handling.
+        
+        Args:
+            url: The URL to make request to
+            params: Query parameters
+            
+        Returns:
+            JSON response data
+        """
+        try:
+            response = self.session.post(
+                url, 
+                json=json
             )
             response.raise_for_status()
             return response.json()

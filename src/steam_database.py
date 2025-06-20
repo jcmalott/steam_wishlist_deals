@@ -321,11 +321,12 @@ class SteamDatabase():
             field_list = sql.SQL(', ').join(map(sql.Identifier, fields))
             query = sql.SQL("""
                 SELECT {fields} FROM {table}
-                WHERE {column} = %s
+                WHERE {column} = {value}
             """).format(
                 fields=field_list,
                 table=sql.Identifier(table),
-                column=sql.Identifier(column)
+                column=sql.Identifier(column),
+                value=sql.Identifier(value)
             )
             
             self.cur.execute(query)
@@ -369,10 +370,11 @@ class SteamDatabase():
                 query = sql.SQL("""
                     SELECT needs_retrieval({column}) 
                     FROM {table} 
-                    WHERE steamid = %s
+                    WHERE steamid = {steamid}
                 """).format(
                     column=sql.Identifier(column),
-                    table=sql.Identifier(self.SCHEDULE_TABLE)
+                    table=sql.Identifier(self.SCHEDULE_TABLE),
+                    steamid=sql.Placeholder()
                 )
                 
                 self.cur.execute(query, (user_id,))
@@ -408,10 +410,11 @@ class SteamDatabase():
             self._ensure_connection()
             
             query = sql.SQL("""
-                SELECT 1 FROM {table} WHERE {column} = %s LIMIT 1
+                SELECT 1 FROM {table} WHERE {column} = {item} LIMIT 1
             """).format(
                 table=sql.Identifier(table),
-                column=sql.Identifier(column)
+                column=sql.Identifier(column),
+                item=sql.Placeholder()
             )
             
             self.cur.execute(query, (item,))
