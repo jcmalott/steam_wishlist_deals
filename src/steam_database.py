@@ -1,4 +1,5 @@
 import psycopg2 as pg2
+from psycopg2.extras import RealDictCursor
 from typing import Dict, Any, List, Union
 import logging
 from contextlib import contextmanager
@@ -46,7 +47,7 @@ class SteamDatabase():
         try:
             self.conn = pg2.connect(database=self.database, user=self.user, password=self.password)
             # Allows enteraction with database
-            self.cur = self.conn.cursor()
+            self.cur = self.conn.cursor(cursor_factory=RealDictCursor)
         except pg2.Error as e:
             logger.error(f"Failed to connect database {self.database} for user {self.user}: {e}")
             
@@ -326,12 +327,12 @@ class SteamDatabase():
                 fields=field_list,
                 table=sql.Identifier(table),
                 column=sql.Identifier(column),
-                value=sql.Identifier(value)
+                value=sql.Literal(value)
             )
             
             self.cur.execute(query)
             results = self.cur.fetchall()
-        
+
             # Convert to list of dictionaries
             items_dict = [dict(row) for row in results]
             

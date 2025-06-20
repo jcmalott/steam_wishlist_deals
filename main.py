@@ -6,7 +6,7 @@ from src.deals_interface import DealsInterface
 from src.steam_database import SteamDatabase
 from src.steam_api import Steam
 
-SHOW_WISHLIST = True  
+SHOW_WISHLIST = False  
 def main():
     """Main entry point for the application."""
     load_dotenv()
@@ -47,6 +47,8 @@ def main():
         for game in game_data:
             game_appid = db.get_game(game['appid'])
             game['header'] = game_appid.get('header_image','')
+            
+        print(f"Len {len(game_data)}")
             
     ui = DealsInterface(game_data, GG_DEALS_KEY_API, ANY_DEAL_KEY_API, STEAM_ID, name)
     ui.launch(True)
