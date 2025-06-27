@@ -17,13 +17,13 @@ class DealsConfig:
         self.batch_size: int = 20
         self.sleep_time: float = 1.5
         self.batch_pause: float = 2.0
-        self.cache_duration: int = 72  # hours
+        self.cache_duration: int = 48  # hours
         self.rate_limit_status_codes: List[int] = field(default_factory=lambda: [429, 503])
 
         """Configuration Application settings."""
         self.wishlist_only: bool = False
         self.max_price_filter: float = 10.0
-        self.min_playtime_minutes: int = 30
+        self.min_playtime_minutes: int = 60
         self.data_dir: str = 'data'
         self.gg_deals_name: str = 'ggdeals'
         self.any_deal_name: str = 'anydeal'

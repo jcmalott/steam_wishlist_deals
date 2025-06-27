@@ -24,6 +24,7 @@ def main():
         raise ValueError("Any Deal API key must be set in environment variables")
     
     if SHOW_WISHLIST:
+        # TODO: Show webpage and wait for user to hit enter before finding everything
         STEAM_KEY_API = os.getenv('STEAM_API_KEY')
         if not STEAM_KEY_API:
             raise ValueError("Steam API key must be set in environment variables")
@@ -33,6 +34,9 @@ def main():
         steam.load_wishlist(STEAM_ID)
         game_data = steam.get_data()['games']
     else:
+        # TODO: Option to pull current price from steam
+        # - chance that anydeals hasn't updated their price info recently
+        # TODO: Order the items by cheapest price
         DATABASE_PASSWORD = os.getenv('DATABASE_PASSWORD')
         if not DATABASE_PASSWORD:
             raise ValueError("Database password not set")

@@ -18,15 +18,15 @@ class ExchangeRates():
         """
         Retrieves daily exchanges rates for most common currencies compared to US dollar.
         """
-        self.exchange_rates = {}
-        self._get_exchange_rates()
-        
         # Initialize session for connection reuse
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'ExchangeRates-Client/1.0',
             'Accept': 'application/json'
         })
+        
+        self.exchange_rates = {}
+        self._get_exchange_rates()
     
     def get_price_dollar(self, price, currency):
         """ 

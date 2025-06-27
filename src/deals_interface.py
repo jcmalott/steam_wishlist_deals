@@ -229,7 +229,6 @@ class DealsInterface:
             
             # Convert to GameData objects
             game_objects = []
-            # print(f"{games_data[0]}")
             for game in games_data:
                 appid = game['appid']
                 steam_info = steam_lookup.get(appid, {})
@@ -254,7 +253,7 @@ class DealsInterface:
             # Sort by GG Deals retail price
             sorted_games = sorted(
                 game_objects, 
-                key=lambda x: x.gg_deals.get('retail_price', float('inf'))
+                key=lambda x: x.current_price
             )
             
             progress(1.0, desc=f"Loaded {len(sorted_games)} games")
@@ -359,40 +358,14 @@ class DealsInterface:
         
     def _display_games(self) -> None:
         """Display multiple games in the interface."""
-        # Apply price filter if enabled
-        games_to_display = self.games
-        if hasattr(self.config, 'max_price_filter') and self.config.max_price_filter > 0:
-            games_to_display = self._filter_games_by_price(self.games)
-        
-        if not games_to_display:
-            gr.Markdown("No games match the current filters!")
-            return
         
         # Display games in batches
-        with tqdm(total=len(games_to_display), desc="Creating UI", unit='game') as pbar:
-            for i in range(0, len(games_to_display), self.config.batch_size):
-                batch = games_to_display[i:i + self.config.batch_size]
+        with tqdm(total=len(self.games), desc="Creating UI", unit='game') as pbar:
+            for i in range(0, len(self.games), self.config.batch_size):
+                batch = self.games[i:i + self.config.batch_size]
                 for game in batch:
                     self._create_game_row(game)
                     pbar.update(1)
-                    
-    def _filter_games_by_price(self, games: List[GameData]) -> List[GameData]:
-        """Filter games by maximum price threshold."""
-        filtered = []
-        max_price = self.config.max_price_filter
-        
-        for game in games:
-            gg_deals = game.gg_deals
-            retail_price = gg_deals.get('retail_price', 0)
-            keyshop_price = gg_deals.get('keyshop_price', 0)
-            
-            has_qualifying_retail = 0 < retail_price <= max_price
-            has_qualifying_keyshop = 0 < keyshop_price <= max_price
-            
-            if has_qualifying_retail or has_qualifying_keyshop:
-                filtered.append(game)
-        
-        return filtered
     
     def _create_game_row(self, game: GameData) -> None:
         """
@@ -404,8 +377,8 @@ class DealsInterface:
         default_image = Image.new('RGB', (150, 200), color=(200, 200, 200))
         
         # Calculate best GG Deals price
-        best_gg_price = game.best_gg_price
-        historic_low = game.gg_deals.get('retail_price_low', 0)
+        best_any_price = game.current_price
+        historic_low = game.lowest_price
         
         with gr.Row(elem_classes='container game-row'):
             # Game image
@@ -425,7 +398,7 @@ class DealsInterface:
             with gr.Column(scale=1):
                 # Current GG Deals price
                 with gr.Row(elem_classes='gap'):
-                    price_display = f"${best_gg_price:.2f}" if best_gg_price > 0 else "N/A"
+                    price_display = f"${best_any_price:.2f}" if best_any_price > 0 else "N/A"
                     gr.Textbox(
                         price_display, 
                         show_label=False, 
