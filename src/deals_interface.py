@@ -233,21 +233,27 @@ class DealsInterface:
                 appid = game['appid']
                 steam_info = steam_lookup.get(appid, {})
                 any_deal_info = any_deal_lookup.get(appid, {})
+                steam_current_price = any_deal_info.get('current_price', 0)
+                gg_key_price = game.get('gg_deals', 0).get('keyshop_price', 0)
                 
                 game_obj = GameData(
                     appid=appid,
                     name=game.get('name', ''),
                     playtime=steam_info.get('mins', 0),
                     header_image=steam_info.get('img'),
-                    current_price=any_deal_info.get('current_price', 0),
+                    # current_price=any_deal_info.get('current_price', 0),
+                    steam_price = steam_current_price,
+                    current_price= min(steam_current_price, gg_key_price),
                     regular_price=any_deal_info.get('regular_price', 0),
-                    lowest_price=any_deal_info.get('lowest_price', 0),
+                    steam_lowest_price=any_deal_info.get('lowest_price', 0),
+                    key_lowest_price=game.get('gg_deals', 0).get('keyshop_price_low', 0),
                     gg_deals=game.get('gg_deals', {}),
                     url=game.get('url', '')
                 )
                 
                 # Filter out free games
-                if game_obj.regular_price > 0:
+                # if game_obj.regular_price > 0:
+                if game_obj.regular_price > 0 and game_obj.current_price > 0:
                     game_objects.append(game_obj)
             
             # Sort by GG Deals retail price
@@ -278,10 +284,11 @@ class DealsInterface:
         with gr.Row():
             with gr.Column(scale=1):
                 game_image = gr.Image(
-                    default_image, 
-                    container=False, 
-                    show_download_button=False, 
-                    show_fullscreen_button=False
+                    value=default_image, 
+                    # container=False, 
+                    # interactive=False
+                    # show_download_button=False, 
+                    # show_fullscreen_button=False
                 )
             with gr.Column(scale=2):
                 game_name = gr.Textbox("", show_label=False, container=False)
@@ -378,16 +385,16 @@ class DealsInterface:
         
         # Calculate best GG Deals price
         best_any_price = game.current_price
-        historic_low = game.lowest_price
         
         with gr.Row(elem_classes='container game-row'):
             # Game image
             with gr.Column(scale=1):
                 gr.Image(
-                    game.header_image or default_image, 
-                    container=False, 
-                    show_download_button=False, 
-                    show_fullscreen_button=False
+                    value=(game.header_image or default_image), 
+                    # container=False, 
+                    # interactive=False
+                    # show_download_button=False, 
+                    # show_fullscreen_button=False
                 )
             
             # Game name
@@ -416,19 +423,19 @@ class DealsInterface:
                 # Historic low GG Deals
                 with gr.Row(elem_classes='gap'):
                     gr.Button('GG Low', scale=1, elem_classes='price_btn', interactive=False)
-                    historic_display = f"${historic_low:.2f}" if historic_low > 0 else "N/A"
+                    historic_display = f"${game.key_lowest_price:.2f}" if game.key_lowest_price > 0 else "N/A"
                     gr.Textbox(historic_display, show_label=False, container=False, scale=2)
                 
                 # Current Steam price
                 with gr.Row(elem_classes='gap'):
                     steam_btn = gr.Button('Steam', scale=1, elem_classes='price_btn')
-                    steam_price_display = f"${game.current_price:.2f}" if game.current_price > 0 else "N/A"
+                    steam_price_display = f"${game.steam_price:.2f}" if game.steam_price > 0 else "N/A"
                     gr.Textbox(steam_price_display, show_label=False, container=False, scale=2)
                 
                 # Steam historic low
                 with gr.Row(elem_classes='gap'):
                     gr.Button('Steam Low', scale=1, elem_classes='price_btn', interactive=False)
-                    steam_low_display = f"${game.lowest_price:.2f}" if game.lowest_price > 0 else "N/A"
+                    steam_low_display = f"${game.steam_lowest_price:.2f}" if game.steam_lowest_price > 0 else "N/A"
                     gr.Textbox(steam_low_display, show_label=False, container=False, scale=2)
         
         # Button click handlers

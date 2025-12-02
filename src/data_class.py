@@ -8,9 +8,11 @@ class GameData:
     name: str
     playtime: int=0
     header_image: Optional[str]=None
+    steam_price:float = 0.0
     current_price:float = 0.0
     regular_price:float = 0.0
-    lowest_price:float = 0.0
+    steam_lowest_price:float = 0.0
+    key_lowest_price:float = 0.0
     gg_deals: Dict[str,Any] = field(default_factory=dict)
     url: str = ""
     

@@ -6,7 +6,7 @@ from src.deals_interface import DealsInterface
 from src.steam_database import SteamDatabase
 from src.steam_api import Steam
 
-SHOW_WISHLIST = False  
+SHOW_WISHLIST = True  
 def main():
     """Main entry point for the application."""
     load_dotenv()
@@ -31,8 +31,7 @@ def main():
 
         name = "wl"
         steam = Steam(STEAM_KEY_API, "data/steam")
-        steam.load_wishlist(STEAM_ID)
-        game_data = steam.get_data()['games']
+        game_data = steam.get_wishlist()
     else:
         # TODO: Option to pull current price from steam
         # - chance that anydeals hasn't updated their price info recently
