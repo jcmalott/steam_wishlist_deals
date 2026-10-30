@@ -49,9 +49,14 @@ class SteamGame(BaseModel):
     tags: list[str]
 
 class Wishlist(BaseModel):
-  steamid: int
+  steamid: str
   appid: int
   priority: int
+  
+class Library(BaseModel):
+  steamid: str
+  appid: int
+  playtime_minutes: int
   
 class DealsGGPrices(BaseModel):
   retail_price: float
@@ -81,6 +86,13 @@ def correct_user_wishlist_response() -> dict:
     return {
         "response": {
             "items": []
+        }
+    }
+    
+def correct_user_library_response() -> dict:
+    return {
+        "response": {
+            "games": []
         }
     }
     

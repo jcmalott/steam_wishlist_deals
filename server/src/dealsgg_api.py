@@ -21,7 +21,7 @@ class DealsGGAPI():
         self.api_key = api_key
         self.session = httpx.AsyncClient()
         
-    async def find_products_by_appid(self, appids, max_price: float = 5.00) -> list[dict[str, any]] | None:      
+    async def find_products_by_appid(self, appids, max_price: float = 10.00) -> list[dict[str, any]] | None:      
         params = {
             'ids': ','.join(map(str, appids)),
             'key': self.api_key
@@ -58,7 +58,7 @@ class DealsGGAPI():
         else:
             return None
         
-    def _filter_game_data(self, game: dict[str, any], appid:str, max_price: float = 5.00) -> dict[str, any] | None:
+    def _filter_game_data(self, game: dict[str, any], appid:str, max_price: float = 10.00) -> dict[str, any] | None:
         prices = game.get("prices", {})
         if not prices:
             return None

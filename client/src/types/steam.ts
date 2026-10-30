@@ -62,19 +62,30 @@ export interface SteamGame {
 }
 
 export interface WishlistItem {
-  steamid: number
-  appid: number
-  priority: number
+  steamid: number;
+  appid: number;
+  priority: number;
 }
 
-export interface DealsGGPrices{
+export interface LibraryItem {
+  appid: number;
+  playtime_forever: number;
+  playtime_windows_forever: number;
+  playtime_mac_forever: number;
+  playtime_linux_forever: number;
+  playtime_deck_forever: number;
+  rtime_last_played: number;
+  playtime_disconnected: number;
+}
+
+export interface DealsGGPrices {
   retail_price: number;
   retail_price_low: number;
   keyshop_price: number;
   keyshop_price_low: number;
 }
-  
-export interface DealsGGItem{
+
+export interface DealsGGItem {
   appid: number;
   name: string;
   url: string;
@@ -82,3 +93,8 @@ export interface DealsGGItem{
   prices: DealsGGPrices;
   currency: string;
 }
+
+export type ListProps = {
+  steamId: string;
+  maxPrice: number | null;
+};

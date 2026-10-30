@@ -1,3 +1,4 @@
+# npm start
 import uvicorn
 import os
 import logging
@@ -6,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import TypeAdapter, ValidationError
 from contextlib import asynccontextmanager
 
-from src.types.steam import SteamPlayer, SteamGame, Wishlist, AppIdsRequest, DealsGG
+from src.types.steam import SteamPlayer, SteamGame, Wishlist, AppIdsRequest, DealsGG, Library
 from src.steam_api import Steam
 from src.dealsgg_api import DealsGGAPI
 
@@ -29,6 +30,10 @@ async def lifespan(app: FastAPI):
     await dealsgg.aclose()
     
 app = FastAPI(lifespan=lifespan)  
+
+@app.get("/api/health")
+def health():
+    return {"ok": True}
 
 @app.get('/api/steam/user/{steam_id}')
 async def get_steam_user(steam_id: str):
@@ -58,6 +63,16 @@ async def get_user_wishlist(steam_id: str):
         validation_error_message='Invalid data structure from Steam wishlist API.'
     )
     
+library_adapter = TypeAdapter(list[Library])    
+@app.get('/api/steam/user/library/{steam_id}')
+async def get_user_library(steam_id: str):
+    return await fetch_and_validate(
+        fetch_func=lambda: steam.get_library(steam_id),
+        validator=library_adapter,
+        not_found_message='Library not found.',
+        validation_error_message='Invalid data structure from Steam Library API.'
+    )
+    
 games_adapter = TypeAdapter(list[SteamGame])     
 @app.post('/api/steam/games')
 async def get_steam_games(request: AppIdsRequest):
@@ -72,7 +87,7 @@ deals_adapter = TypeAdapter(list[DealsGG])
 @app.post('/api/dealsgg/games')
 async def get_dealsgg_games(request: AppIdsRequest):
     return await fetch_and_validate(
-        fetch_func=lambda: dealsgg.find_products_by_appid(request.appids, max_price=5.00),
+        fetch_func=lambda: dealsgg.find_products_by_appid(request.appids, max_price=10.00),
         validator=deals_adapter,
         not_found_message='No deals found.',
         validation_error_message='Invalid data structure from DealsGG API.'

@@ -1,9 +1,13 @@
+TODO:
+Find a way to ranking the games in my library and list them for greastest to least
+
 # Steam Deals
 
 Allows users with a Steam account to view deals for games on their wishlist or library.<br>
 https://store.steampowered.com/account/
 
 ## Table of Contents
+
 - [Installation](#installation)
 - [Usage](#usage)
 
@@ -11,6 +15,7 @@ https://store.steampowered.com/account/
 
 Clone repo. <br>
 Open a terminal to the file location you want to install the project.
+
 ```bash
 git clone https://github.com/jcmalott/steam_wishlist_deals.git
 cd steam_wishlist_deals
@@ -38,6 +43,7 @@ Once ready, all deals will be displayed.
 
 A drop-down search bar is displayed at the top for displaying a single game. <br>
 From top to bottom.
+
 - Current Best Deal
 - The cheapest price it sold for
 - Steam's current price

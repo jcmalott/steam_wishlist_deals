@@ -17,7 +17,7 @@ from datetime import datetime
 import time
 from bs4 import BeautifulSoup
 
-from src.types.steam import correct_user_account_response, correct_game_data_response, correct_user_wishlist_response
+from src.types.steam import correct_user_account_response, correct_game_data_response, correct_user_wishlist_response, correct_user_library_response
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -357,7 +357,50 @@ class Steam():
             
         return process_data
     
-    
+    async def get_library(self, steam_id):
+        """ 
+            Get all game ids that are stored within the users library from steam server.
+            This will be games that the user owns.
+        """
+        params = {
+            'key': self.steam_api_key,
+            'steamid': steam_id,
+            'format': 'json',
+            'include_played_free_games': False
+        }
+        
+        response = await self._make_request(self.STEAM_LIBRARY_URL, params)
+        library = self._check_response(response, correct_user_library_response())
+        if len(library) == 0:
+            raise ValueError(f'SteamId: {steam_id}, no wishlist found.')
+        
+        processed_data = self._process_library_data(library, steam_id)
+        if not processed_data:
+            logger.warning(f"UserId: {steam_id} has no library items!")
+        else:
+            logger.info(f"Library: UserId {steam_id} library retrieved from Server!")
+            
+        return processed_data
+            
+    def _process_library_data(self, library: dict[str,any], steam_id: str) -> list[dict]:
+        """ 
+            Get appid and playtime of all games found within user's library.
+            
+            Return: list of dict containing appid and playtime mintues
+            - appid: id of game
+            - playtime_minutes: How long user has played the game.
+        """
+        
+        process_data = []
+        for game in library:
+            if "appid" in game:
+                process_data.append({
+                    "steamid": steam_id,
+                    "appid": game["appid"],
+                    "playtime_minutes": game["playtime_forever"]
+                })
+            
+        return process_data
     
     
         
@@ -410,30 +453,6 @@ class Steam():
     #     except requests.RequestException as e:
     #         print(f"Error fetching Appid: {e}")
     #         return []    
-    
-    # def get_library(self, user_id):
-    #     """ 
-    #         Get all game ids that are stored within the users library from steam server.
-    #         This will be games that the user owns.
-    #     """
-    #     params = {
-    #         'key': self.steam_api_key,
-    #         'steamid': user_id,
-    #         'format': 'json',
-    #         'include_played_free_games': True
-    #     }
-        
-    #     response = self._make_request(self.STEAM_LIBRARY_URL, params)
-    #     data = self._check_response(response, 'games')
-    #     if not data:
-    #         logger.warning("Failed to get library data.")
-        
-    #     processed_data = self._process_library_data(data, user_id)
-    #     if not processed_data:
-    #         logger.warning(f"UserId: {user_id} has no library items!")
-    #     else:
-    #         logger.info(f"Library: UserId {user_id} library retrieved from Server!")
-            
     #     return processed_data
     
     # def get_appid_from_link(self, link: str) -> int | None:
@@ -453,31 +472,6 @@ class Steam():
     #         appid = int(match.group(1))
         
     #     return appid
-    
-    
-    # def _process_library_data(self, response: dict[str,any], user_id: str) -> list[dict]:
-    #     """ 
-    #         Get appid and playtime of all games found within user's library.
-            
-    #         Return: list of dict containing appid and playtime mintues
-    #         - appid: id of game
-    #         - playtime_minutes: How long user has played the game.
-    #     """
-    #     games = response.get("games", []) if "games" in response else []
-    #     if not games:
-    #         logger.warning("No games in library.")
-    #         return []
-        
-    #     process_data = []
-    #     for game in games:
-    #         if "appid" in game:
-    #             process_data.append({
-    #                 "steamid": user_id,
-    #                 "appid": game["appid"],
-    #                 "playtime_minutes": game["playtime_forever"]
-    #             })
-            
-    #     return process_data
     
     def _strip_for_text(self, text):
         # Remove HTML tags
